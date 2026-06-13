@@ -1,0 +1,92 @@
+/*
+ * Dispatch design tokens — recreated from the MITRE Design System values
+ * enumerated in the handoff README. These mirror the `_ds/…/tokens/*.css`
+ * the original prototype consumed; treat this file as our equivalent of it.
+ */
+:root {
+  /* ---- Brand ---- */
+  --brand-primary: #005b94;
+  --brand-primary-hover: #00497a;
+  --color-dark-navy: #0b2338;
+  --color-navy: #0d2f4f;
+  --color-blue2-dark: #157fac;
+  --color-highlighter: #fff601;
+  --color-light-blue: #87deff;
+  --color-purple-dark: #5d4a9e;
+
+  /* agent status dots (on dark) */
+  --color-green-light: #4eb96f;
+  --color-orange-light: #ff6d2d;
+  --color-yellow-light: #fddb00;
+
+  /* ---- Neutrals ---- */
+  --neutral-0: #ffffff;
+  --neutral-50: #f7f9fa;
+  --neutral-100: #f1f3f4;
+  --neutral-200: #e4edee;
+  --neutral-300: #d4d4d3;
+  --neutral-400: #b9bdbf;
+  --neutral-500: #7e8284;
+  --neutral-600: #6f7981;
+  --neutral-700: #45525c;
+
+  /* ---- Status ---- */
+  --status-success: #248541;
+  --status-success-surface: #e6f3ea;
+  --status-warning: #d4452d;
+  --status-warning-surface: #fceae3;
+  --status-danger: #d02027;
+  --status-danger-surface: #fbe7e8;
+  --status-info: #157fac;
+  --status-info-surface: #e6f4fb;
+
+  /* ---- Semantic surfaces / text ---- */
+  --surface-sunken: var(--neutral-100);
+  --border-subtle: var(--neutral-200);
+  --border-default: var(--neutral-300);
+  --border-strong: var(--neutral-400);
+  --text-strong: var(--color-dark-navy);
+  --text-body: var(--neutral-700);
+  --text-muted: var(--neutral-600);
+  --text-subtle: var(--neutral-500);
+  --text-on-dark-muted: #afc2d1;
+
+  /* ---- Typography ---- */
+  --font-display: 'Barlow Semi Condensed', 'Trade Gothic', 'Arial Narrow', sans-serif;
+  --font-heading: 'Barlow', system-ui, sans-serif;
+  --font-body: 'Arimo', Arial, system-ui, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+
+  /* ---- Radius ---- */
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --radius-pill: 999px;
+
+  /* ---- Spacing (4px base) ---- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  /* ---- Shadows (cool, low) ---- */
+  --shadow-xs: 0 1px 2px rgba(11, 35, 56, 0.06);
+  --shadow-sm: 0 2px 6px rgba(11, 35, 56, 0.08);
+  --shadow-md: 0 4px 12px rgba(11, 35, 56, 0.1);
+  --shadow-lg: 0 12px 28px rgba(11, 35, 56, 0.14);
+  --shadow-xl: 0 20px 48px rgba(11, 35, 56, 0.22);
+
+  /* ---- Motion ---- */
+  --duration-fast: 120ms;
+  --duration-base: 200ms;
+  --duration-slow: 280ms;
+  --ease-standard: cubic-bezier(0.2, 0, 0.2, 1);
+  --focus-ring: 0 0 0 3px rgba(56, 196, 242, 0.45);
+}

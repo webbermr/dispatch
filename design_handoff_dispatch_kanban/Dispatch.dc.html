@@ -1,0 +1,825 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="_ds/mitre-design-system-b475d329-c1d0-4ad9-9ab4-08fba8eef93b/tokens/fonts.css">
+<link rel="stylesheet" href="_ds/mitre-design-system-b475d329-c1d0-4ad9-9ab4-08fba8eef93b/tokens/colors.css">
+<link rel="stylesheet" href="_ds/mitre-design-system-b475d329-c1d0-4ad9-9ab4-08fba8eef93b/tokens/typography.css">
+<link rel="stylesheet" href="_ds/mitre-design-system-b475d329-c1d0-4ad9-9ab4-08fba8eef93b/tokens/spacing.css">
+<link rel="stylesheet" href="_ds/mitre-design-system-b475d329-c1d0-4ad9-9ab4-08fba8eef93b/tokens/elevation.css">
+<link rel="stylesheet" href="_ds/mitre-design-system-b475d329-c1d0-4ad9-9ab4-08fba8eef93b/tokens/base.css">
+<link rel="stylesheet" href="_ds/mitre-design-system-b475d329-c1d0-4ad9-9ab4-08fba8eef93b/styles.css">
+<script src="_ds/mitre-design-system-b475d329-c1d0-4ad9-9ab4-08fba8eef93b/_ds_bundle.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body { background: var(--neutral-50); }
+  textarea, input, button { font-family: inherit; }
+  @keyframes dpspin { to { transform: rotate(360deg); } }
+  @keyframes dppulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: .3; transform: scale(.65); } }
+  @keyframes dpfade { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  @keyframes dpslide { from { opacity: 0; transform: translateX(28px); } to { opacity: 1; transform: none; } }
+  @keyframes dpstripe { from { background-position: 0 0; } to { background-position: 28px 0; } }
+  .dp-scroll::-webkit-scrollbar { height: 10px; width: 10px; }
+  .dp-scroll::-webkit-scrollbar-thumb { background: var(--neutral-300); border-radius: 99px; }
+  .dp-scroll::-webkit-scrollbar-track { background: transparent; }
+</style>
+</helmet>
+
+<div style="font-family: var(--font-body); color: var(--text-body); min-height: 100vh; background: var(--neutral-50); display: flex; flex-direction: column;">
+
+  <header style="height: 58px; flex: 0 0 58px; background: var(--color-dark-navy); display: flex; align-items: center; gap: 14px; padding: 0 22px; color: #fff; position: relative; z-index: 50;">
+    <div style="width: 30px; height: 30px; border-radius: var(--radius-sm); background: var(--color-highlighter); display: flex; align-items: center; justify-content: center; font-family: var(--font-display); font-weight: 700; font-size: 20px; color: var(--color-dark-navy);">D</div>
+    <div style="font-family: var(--font-display); font-weight: 700; font-size: 22px; letter-spacing: .01em; line-height: 1;">DISPATCH</div>
+    <div style="font-size: 12.5px; color: var(--text-on-dark-muted); border-left: 1px solid rgba(255,255,255,.16); padding-left: 14px; margin-left: 2px;">Pick a card. Ship a feature.</div>
+    <div style="flex: 1;"></div>
+    <button onClick="{{ onOpenConnect }}" style="display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 13px; border-radius: var(--radius-pill); border: 1px solid rgba(255,255,255,.18); background: rgba(255,255,255,.06); color: #fff; cursor: pointer; font-family: var(--font-mono); font-size: 12px;" style-hover="background: rgba(255,255,255,.13); border-color: rgba(255,255,255,.32);">
+      <span style="width: 8px; height: 8px; border-radius: 50%; background: {{ agentDotColor }}; box-shadow: 0 0 0 3px {{ agentDotGlow }};"></span>{{ agentLabel }}
+    </button>
+    <div style="width: 1px; height: 22px; background: rgba(255,255,255,.16);"></div>
+    <span style="font-size: 11px; letter-spacing: .14em; color: var(--text-on-dark-muted); text-transform: uppercase;">Built with</span>
+    <img src="assets/mitre-wordmark-white.svg" alt="MITRE" style="height: 16px; opacity: .92;">
+  </header>
+
+  <sc-if value="{{ isPicker }}" hint-placeholder-val="{{ true }}">
+  <main data-screen-label="App picker" style="max-width: 1080px; margin: 0 auto; width: 100%; padding: 52px 32px 72px;">
+    <div style="font-family: var(--font-heading); font-weight: 700; font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--brand-primary); margin-bottom: 10px;">Workspace</div>
+    <h1 style="font-family: var(--font-display); font-weight: 700; font-size: 46px; line-height: 1.02; margin: 0 0 10px; color: var(--text-strong);">Your apps</h1>
+    <p style="font-size: 16px; line-height: 1.5; color: var(--text-muted); margin: 0 0 36px; max-width: 540px;">Open a board to see its cards. Anything you start gets handed straight to Codex on the cloned repo.</p>
+    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 18px;">
+      <sc-for list="{{ apps }}" as="app" hint-placeholder-count="4">
+        <div onClick="{{ app.onOpen }}" style="background: #fff; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 18px; cursor: pointer; box-shadow: var(--shadow-xs); transition: box-shadow var(--duration-base) var(--ease-standard), transform var(--duration-base) var(--ease-standard);" style-hover="box-shadow: var(--shadow-lg); transform: translateY(-3px);">
+          <div style="display: flex; align-items: center; gap: 13px; margin-bottom: 16px;">
+            <div style="width: 44px; height: 44px; flex: 0 0 44px; border-radius: var(--radius-sm); background: {{ app.accent }}; color: #fff; display: flex; align-items: center; justify-content: center; font-family: var(--font-display); font-weight: 700; font-size: 19px;">{{ app.initials }}</div>
+            <div style="min-width: 0;">
+              <div style="font-family: var(--font-heading); font-weight: 700; font-size: 17px; color: var(--text-strong); line-height: 1.2;">{{ app.name }}</div>
+              <div style="font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ app.repo }}</div>
+            </div>
+          </div>
+          <div style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">{{ app.stack }}</div>
+          <div style="display: flex; align-items: center; gap: 10px; padding-top: 14px; border-top: 1px solid var(--border-subtle);">
+            <span style="display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px; border-radius: var(--radius-pill); background: {{ app.cloneBg }}; color: {{ app.cloneFg }}; font-family: var(--font-heading); font-weight: 700; font-size: 11px; letter-spacing: .04em; text-transform: uppercase;">
+              <span style="width: 6px; height: 6px; border-radius: 50%; background: {{ app.cloneFg }};"></span>{{ app.statusText }}
+            </span>
+            <div style="flex: 1;"></div>
+            <span style="font-size: 12.5px; color: var(--text-subtle); font-family: var(--font-mono);">{{ app.countText }}</span>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+  </main>
+  </sc-if>
+
+  <sc-if value="{{ isBoard }}">
+  <div style="display: flex; flex-direction: column; min-height: 0;" data-screen-label="Board">
+    <div style="background: #fff; border-bottom: 1px solid var(--border-subtle); padding: 12px 22px; display: flex; align-items: center; gap: 14px; flex: 0 0 auto;">
+      <button onClick="{{ onBack }}" style="width: 34px; height: 34px; border: 1px solid var(--border-default); background: #fff; border-radius: var(--radius-sm); cursor: pointer; color: var(--text-strong); font-size: 17px; display: flex; align-items: center; justify-content: center;" style-hover="background: var(--neutral-50);">←</button>
+      <div>
+        <div style="font-family: var(--font-heading); font-weight: 700; font-size: 18px; color: var(--text-strong); line-height: 1.15;">{{ appName }}</div>
+        <div style="font-family: var(--font-mono); font-size: 12px; color: var(--text-muted);">{{ appRepo }}</div>
+      </div>
+      <span style="display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px; border-radius: var(--radius-pill); background: {{ boardCloneBg }}; color: {{ boardCloneFg }}; font-family: var(--font-heading); font-weight: 700; font-size: 11px; letter-spacing: .04em; text-transform: uppercase;">
+        <span style="width: 6px; height: 6px; border-radius: 50%; background: {{ boardCloneFg }};"></span>{{ boardCloneText }}
+      </span>
+      <div style="flex: 1;"></div>
+      <button onClick="{{ onNewCard }}" style="height: 36px; padding: 0 16px; border: 1px solid var(--border-default); background: #fff; border-radius: var(--radius-sm); cursor: pointer; font-family: var(--font-heading); font-weight: 700; font-size: 14px; color: var(--brand-primary); display: inline-flex; align-items: center; gap: 7px;" style-hover="background: var(--neutral-50); border-color: var(--border-strong);">+ New card</button>
+    </div>
+
+    <div class="dp-scroll" style="overflow-x: auto; padding: 22px; display: flex; gap: 16px; align-items: flex-start;">
+      <sc-for list="{{ columns }}" as="col" hint-placeholder-count="5">
+        <section onDragOver="{{ col.onDragOver }}" onDrop="{{ col.onDrop }}" style="width: 304px; flex: 0 0 304px; background: var(--surface-sunken); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); display: flex; flex-direction: column; max-height: calc(100vh - 154px);">
+          <header style="padding: 13px 15px 12px; display: flex; align-items: center; gap: 9px; border-top: 3px solid {{ col.accent }}; border-radius: var(--radius-md) var(--radius-md) 0 0;">
+            <span style="font-family: var(--font-heading); font-weight: 700; font-size: 13px; letter-spacing: .07em; text-transform: uppercase; color: var(--text-strong);">{{ col.title }}</span>
+            <span style="display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 6px; border-radius: var(--radius-pill); background: var(--neutral-200); color: var(--text-muted); font-size: 11.5px; font-weight: 700; font-family: var(--font-heading);">{{ col.count }}</span>
+            <div style="flex: 1;"></div>
+            <sc-if value="{{ col.live }}">
+              <span style="width: 8px; height: 8px; border-radius: 50%; background: var(--color-highlighter); box-shadow: 0 0 0 3px rgba(255,246,1,.28); animation: dppulse 1.3s var(--ease-standard) infinite;"></span>
+            </sc-if>
+          </header>
+          <div style="padding: 0 11px 12px; display: flex; flex-direction: column; gap: 11px; overflow-y: auto;">
+            <sc-for list="{{ col.cards }}" as="card" hint-placeholder-count="2">
+              <article draggable="{{ true }}" onDragStart="{{ card.onDragStart }}" onClick="{{ card.onOpen }}" style="background: #fff; border: 1px solid var(--border-subtle); border-left: 3px solid {{ card.typeAccent }}; border-radius: var(--radius-sm); padding: 12px 13px; cursor: pointer; box-shadow: var(--shadow-xs); transition: box-shadow var(--duration-base) var(--ease-standard), transform var(--duration-base) var(--ease-standard);" style-hover="box-shadow: var(--shadow-md); transform: translateY(-2px);">
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 9px;">
+                  <span style="display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: var(--radius-xs); background: {{ card.typeBg }}; color: {{ card.typeFg }}; font-family: var(--font-heading); font-weight: 700; font-size: 10.5px; letter-spacing: .05em; text-transform: uppercase;">{{ card.typeLabel }}</span>
+                  <div style="flex: 1;"></div>
+                  <span style="display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; color: var(--text-muted);"><span style="width: 7px; height: 7px; border-radius: 50%; background: {{ card.priColor }};"></span>{{ card.priLabel }}</span>
+                </div>
+                <div style="font-family: var(--font-heading); font-weight: 700; font-size: 15px; line-height: 1.25; color: var(--text-strong); margin-bottom: 5px;">{{ card.title }}</div>
+                <div style="font-size: 12.5px; line-height: 1.45; color: var(--text-muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">{{ card.desc }}</div>
+
+                <sc-if value="{{ card.isBuilding }}">
+                  <div style="margin-top: 11px;">
+                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px;">
+                      <span style="font-family: var(--font-mono); font-size: 11px; color: var(--text-muted);">{{ card.buildStep }}</span>
+                      <span style="font-family: var(--font-mono); font-size: 11px; font-weight: 700; color: var(--text-strong);">{{ card.progressText }}</span>
+                    </div>
+                    <div style="height: 6px; border-radius: 99px; background: var(--neutral-200); overflow: hidden;">
+                      <div style="height: 100%; width: {{ card.progressWidth }}; background-image: linear-gradient(90deg, var(--color-highlighter) 0%, #FFE94D 100%); background-size: 28px 28px; animation: dpstripe .8s linear infinite; transition: width .5s var(--ease-standard);"></div>
+                    </div>
+                  </div>
+                </sc-if>
+                <sc-if value="{{ card.isReview }}">
+                  <div style="margin-top: 11px; display: flex; align-items: center; gap: 8px;">
+                    <span style="font-family: var(--font-mono); font-size: 11.5px; color: var(--text-muted);">{{ card.reviewMeta }}</span>
+                    <div style="flex: 1;"></div>
+                    <span style="font-family: var(--font-heading); font-weight: 700; font-size: 12px; color: var(--status-warning);">Review →</span>
+                  </div>
+                </sc-if>
+                <sc-if value="{{ card.showBranch }}">
+                  <div style="margin-top: 11px; display: flex; align-items: center; gap: 6px; color: var(--text-subtle);">
+                    <span style="font-size: 11px;">⎇</span>
+                    <span style="font-family: var(--font-mono); font-size: 11.5px;">{{ card.branch }}</span>
+                  </div>
+                </sc-if>
+              </article>
+            </sc-for>
+            <sc-if value="{{ col.isEmpty }}">
+              <div style="padding: 18px 12px; text-align: center; font-size: 12.5px; color: var(--text-subtle); border: 1px dashed var(--border-default); border-radius: var(--radius-sm); background: rgba(255,255,255,.4);">{{ col.emptyText }}</div>
+            </sc-if>
+          </div>
+        </section>
+      </sc-for>
+    </div>
+  </div>
+  </sc-if>
+
+  <sc-if value="{{ cardOpen }}">
+    <div onClick="{{ onCloseCard }}" style="position: fixed; inset: 0; background: rgba(11,35,56,.55); z-index: 1100; display: flex; justify-content: flex-end; backdrop-filter: blur(2px);">
+      <div onClick="{{ stopProp }}" style="width: min(580px, 100%); height: 100%; background: #fff; box-shadow: var(--shadow-xl); display: flex; flex-direction: column;">
+        <header style="padding: 16px 20px; border-bottom: 1px solid var(--border-subtle); display: flex; align-items: flex-start; gap: 12px; flex: 0 0 auto;">
+          <div style="min-width: 0;">
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 7px;">
+              <span style="display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: var(--radius-xs); background: {{ openCardView.typeBg }}; color: {{ openCardView.typeFg }}; font-family: var(--font-heading); font-weight: 700; font-size: 10.5px; letter-spacing: .05em; text-transform: uppercase;">{{ openCardView.typeLabel }}</span>
+              <span style="display: inline-flex; align-items: center; height: 20px; padding: 0 9px; border-radius: var(--radius-pill); background: {{ openCardView.statusBg }}; color: {{ openCardView.statusFg }}; font-family: var(--font-heading); font-weight: 700; font-size: 10.5px; letter-spacing: .05em; text-transform: uppercase;">{{ openCardView.statusLabel }}</span>
+            </div>
+            <h2 style="font-family: var(--font-heading); font-weight: 700; font-size: 21px; line-height: 1.2; margin: 0; color: var(--text-strong);">{{ openCardView.title }}</h2>
+          </div>
+          <div style="flex: 1;"></div>
+          <button onClick="{{ onCloseCard }}" style="width: 32px; height: 32px; flex: 0 0 32px; border: 1px solid var(--border-default); background: #fff; border-radius: var(--radius-sm); cursor: pointer; color: var(--text-muted); font-size: 17px; display: flex; align-items: center; justify-content: center;" style-hover="background: var(--neutral-50); color: var(--text-strong);">×</button>
+        </header>
+        <div style="flex: 1; overflow-y: auto; min-height: 0; display: flex; flex-direction: column;">{{ detailBody }}</div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ cloneOpen }}">
+    <div style="position: fixed; inset: 0; background: rgba(11,35,56,.6); z-index: 1150; display: flex; align-items: center; justify-content: center; padding: 24px; backdrop-filter: blur(2px);">
+      <div style="width: 100%; max-width: 440px; background: #fff; border-radius: var(--radius-md); box-shadow: var(--shadow-xl); overflow: hidden; animation: dpfade .2s; border-top: 4px solid var(--status-warning);">
+        <div style="padding: 24px 24px 20px;">
+          <div style="display: flex; align-items: center; gap: 11px; margin-bottom: 14px;">
+            <div style="width: 38px; height: 38px; border-radius: var(--radius-sm); background: var(--status-warning-surface); color: var(--status-warning); display: flex; align-items: center; justify-content: center; font-size: 20px;">⎘</div>
+            <h3 style="font-family: var(--font-heading); font-weight: 700; font-size: 19px; margin: 0; color: var(--text-strong);">Repo not cloned</h3>
+          </div>
+          <p style="font-size: 14px; line-height: 1.55; color: var(--text-body); margin: 0 0 14px;">Codex can't start until <strong>{{ cloneModal.appName }}</strong> is on this machine. Clone it now and we'll dispatch the card right after.</p>
+          <div style="font-family: var(--font-mono); font-size: 12.5px; color: var(--text-strong); background: var(--neutral-50); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 10px 12px;">git clone git@github.com:{{ cloneModal.repo }}.git</div>
+        </div>
+        <div style="padding: 14px 24px; background: var(--neutral-50); border-top: 1px solid var(--border-subtle); display: flex; gap: 10px; justify-content: flex-end;">
+          <button onClick="{{ onCancelClone }}" style="height: 38px; padding: 0 16px; border: 1px solid var(--border-default); background: #fff; border-radius: var(--radius-sm); cursor: pointer; font-family: var(--font-heading); font-weight: 700; font-size: 14px; color: var(--text-body);" style-hover="background: var(--neutral-100);">Cancel</button>
+          <button onClick="{{ onConfirmClone }}" style="height: 38px; padding: 0 18px; border: 1px solid var(--brand-primary); background: var(--brand-primary); border-radius: var(--radius-sm); cursor: pointer; font-family: var(--font-heading); font-weight: 700; font-size: 14px; color: #fff;" style-hover="background: var(--brand-primary-hover); border-color: var(--brand-primary-hover);">Clone &amp; continue</button>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ connectOpen }}">
+    <div onClick="{{ onCloseConnect }}" style="position: fixed; inset: 0; background: rgba(11,35,56,.6); z-index: 1150; display: flex; align-items: center; justify-content: center; padding: 24px; backdrop-filter: blur(2px);">
+      <div onClick="{{ stopProp }}" style="width: 100%; max-width: 468px; background: #fff; border-radius: var(--radius-md); box-shadow: var(--shadow-xl); overflow: hidden; animation: dpfade .2s; border-top: 4px solid var(--brand-primary);">{{ connectBody }}</div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ toastOpen }}">
+    <div style="position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); background: var(--color-dark-navy); color: #fff; padding: 12px 18px; border-radius: var(--radius-sm); box-shadow: var(--shadow-lg); z-index: 1200; font-size: 14px; display: flex; gap: 10px; align-items: center; animation: dpfade .2s;">
+      <span style="width: 8px; height: 8px; border-radius: 50%; background: var(--color-highlighter);"></span>{{ toastText }}
+    </div>
+  </sc-if>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this._timers = {};
+    this.state = {
+      view: 'picker',
+      appId: null,
+      openCardId: null,
+      detailTab: 'diff',
+      draggingId: null,
+      cloneModal: null,
+      logOpen: {},
+      chatDrafts: {},
+      toast: null,
+      agentStatus: 'connected',
+      agentPort: 4317,
+      agentBusy: false,
+      connectOpen: false,
+      apps: [
+        { id: 'a1', name: 'Pocket Ledger', repo: 'maya/pocket-ledger', stack: 'Next.js · Supabase · TypeScript', cloned: true, base: 'main', accent: 'var(--brand-primary)' },
+        { id: 'a2', name: 'TrailMix', repo: 'maya/trailmix', stack: 'React Native · Expo · TypeScript', cloned: true, base: 'main', accent: 'var(--color-navy)' },
+        { id: 'a3', name: 'Glassbox CMS', repo: 'maya/glassbox', stack: 'Astro · Tailwind · MDX', cloned: false, base: 'main', accent: 'var(--color-blue2-dark)' },
+        { id: 'a4', name: 'Hearth', repo: 'maya/hearth-iot', stack: 'Go · MQTT · SQLite', cloned: true, base: 'main', accent: 'var(--color-purple-dark)' },
+      ],
+      cards: this._seedCards(),
+    };
+  }
+
+  _seedCards() {
+    return [
+      // TrailMix (a2) — the rich demo board
+      { id: 'c1', appId: 'a2', type: 'feature', priority: 'med', status: 'ideas', title: 'Offline trail caching', desc: 'Let hikers download a trail + map tiles so the app works with no signal on the mountain.', prompt: 'Add offline support for trails.\n\n- Add a "Download for offline" action on the Trail Detail screen.\n- Cache the trail GeoJSON and the surrounding map tiles (zoom 12–16) to local storage.\n- Show a download progress indicator and a "Saved offline" badge.\n- When offline, read from cache and hide network-only actions.\n- Add a Downloads section in Settings to manage/clear cached trails.' },
+      { id: 'c2', appId: 'a2', type: 'enhancement', priority: 'low', status: 'ideas', title: 'Dark mode for map view', desc: 'The bright map blows out night hikes. Add a dark tile theme that follows system appearance.', prompt: 'Add a dark map theme.\n\n- Use a dark tile style for the map when the system is in dark mode.\n- Add a manual override toggle in Settings (System / Light / Dark).\n- Make sure route lines and markers stay legible on the dark tiles.' },
+      { id: 'c3', appId: 'a2', type: 'bug', priority: 'high', status: 'ready', title: 'GPS drift on Android', desc: 'Recorded tracks zig-zag badly on Android 14. Position jumps up to ~40m between points.', prompt: 'Fix GPS drift on Android.\n\n- Investigate the location stream on Android 14 (Pixel + Samsung).\n- Apply a Kalman / accuracy filter and drop points with accuracy worse than 25m.\n- Smooth the recorded polyline without losing real elevation changes.\n- Add a regression test using a recorded noisy trace fixture.' },
+      { id: 'c4', appId: 'a2', type: 'feature', priority: 'med', status: 'ready', title: 'Elevation profile chart', desc: 'Show an interactive elevation-vs-distance chart under each trail with a draggable marker.', prompt: 'Add an elevation profile chart to Trail Detail.\n\n- Render elevation over distance from the trail track.\n- Dragging along the chart moves a marker on the map (and vice-versa).\n- Show total ascent / descent and max grade above the chart.\n- Keep it 60fps on a mid-range Android device.' },
+      { id: 'c5', appId: 'a2', type: 'feature', priority: 'high', status: 'building', title: 'Share a trail to friends', desc: 'Native share sheet + deep link so a trail opens straight in the app for whoever you send it to.', branch: 'feat/share-trail',
+        build: { progress: 14, currentStep: 'Cloning context', steps: [], logs: [
+          '$ codex run --task TM-118 --branch feat/share-trail',
+          '\u2713 Repo synced \u00b7 maya/trailmix @ main',
+        ] } },
+      { id: 'c6', appId: 'a2', type: 'bug', priority: 'high', status: 'review', title: 'Crash on empty favorites list', desc: 'App hard-crashes opening Favorites before the first sync because the list is undefined.', branch: 'fix/empty-favorites',
+        diff: [
+          { file: 'src/screens/FavoritesScreen.tsx', add: 6, del: 1, lines: [
+            { t: 'ctx', text: '  const favorites = useFavorites();' },
+            { t: 'ctx', text: '' },
+            { t: 'del', text: '  return <List data={favorites} renderItem={renderRow} />;' },
+            { t: 'add', text: '  if (!favorites?.length) {' },
+            { t: 'add', text: '    return <EmptyState title="No favorites yet" hint="Tap the heart on any trail." />;' },
+            { t: 'add', text: '  }' },
+            { t: 'add', text: '' },
+            { t: 'add', text: '  return <List data={favorites} renderItem={renderRow} />;' },
+          ] },
+          { file: 'src/components/EmptyState.tsx', add: 11, del: 0, lines: [
+            { t: 'add', text: 'export function EmptyState({ title, hint }) {' },
+            { t: 'add', text: '  return (' },
+            { t: 'add', text: '    <View style={styles.wrap}>' },
+            { t: 'add', text: '      <Text style={styles.title}>{title}</Text>' },
+            { t: 'add', text: '      {hint ? <Text style={styles.hint}>{hint}</Text> : null}' },
+            { t: 'add', text: '    </View>' },
+            { t: 'add', text: '  );' },
+            { t: 'add', text: '}' },
+          ] },
+          { file: 'src/hooks/useFavorites.ts', add: 1, del: 1, lines: [
+            { t: 'ctx', text: '  const { data } = useQuery(["favorites"], fetchFavorites);' },
+            { t: 'del', text: '  return data;' },
+            { t: 'add', text: '  return data ?? [];' },
+          ] },
+        ],
+        chat: [
+          { role: 'agent', text: 'Done. The crash came from `favorites` being undefined before the first fetch resolved. I added a null-guard in the hook and a friendly empty state. 3 files changed, 42 tests passing.' },
+        ] },
+      { id: 'c7', appId: 'a2', type: 'enhancement', priority: 'med', status: 'merged', title: 'Faster map tile loading', desc: 'Pre-warm and cache adjacent tiles so panning the map stops flashing grey squares.', branch: 'enh/tile-cache', mergedAt: 'Merged yesterday \u00b7 2:14 PM', diff: [ { file: 'src/map/tileCache.ts', add: 38, del: 6, lines: [] } ] },
+      { id: 'c8', appId: 'a2', type: 'feature', priority: 'low', status: 'merged', title: 'Apple Health sync', desc: 'Push completed hikes (distance, elevation, duration) into Apple Health as workouts.', branch: 'feat/health-sync', mergedAt: 'Merged 3 days ago', diff: [ { file: 'ios/HealthSync.swift', add: 91, del: 0, lines: [] } ] },
+
+      // Pocket Ledger (a1)
+      { id: 'd1', appId: 'a1', type: 'enhancement', priority: 'low', status: 'ideas', title: 'Budgets dashboard', desc: 'A monthly budget overview with category rings and an over/under banner.', prompt: 'Build a monthly budgets dashboard.\n\n- Per-category spend vs budget as progress rings.\n- A top banner showing total over/under for the month.\n- Tapping a category drills into its transactions.' },
+      { id: 'd2', appId: 'a1', type: 'feature', priority: 'high', status: 'ready', title: 'Recurring transactions', desc: 'Let users mark a transaction as recurring (weekly/monthly) and auto-generate future entries.', prompt: 'Add recurring transactions.\n\n- Add a recurrence option (none/weekly/monthly/yearly) when creating a transaction.\n- Generate upcoming entries and show them as "scheduled".\n- Allow editing/skipping a single occurrence or the whole series.' },
+      { id: 'd3', appId: 'a1', type: 'bug', priority: 'med', status: 'ready', title: 'Negative balance allowed', desc: 'Transfers can push an account below zero without warning. Add validation + a confirm step.', prompt: 'Prevent silent negative balances.\n\n- Validate transfers and expenses against the source account balance.\n- If it would go negative, require an explicit confirmation.\n- Surface a subtle "over budget" indicator on the account.' },
+      { id: 'd4', appId: 'a1', type: 'feature', priority: 'med', status: 'merged', title: 'CSV export', desc: 'Export filtered transactions to CSV and share via the system sheet.', branch: 'feat/csv-export', mergedAt: 'Merged last week', diff: [ { file: 'src/export/csv.ts', add: 54, del: 2, lines: [] } ] },
+
+      // Glassbox CMS (a3) — NOT cloned, so starting triggers the clone modal
+      { id: 'e1', appId: 'a3', type: 'feature', priority: 'med', status: 'ready', title: 'Draft preview links', desc: 'Generate a shareable, expiring preview URL for unpublished drafts.', prompt: 'Add draft preview links.\n\n- Generate a signed, expiring URL for any draft.\n- Preview renders the draft exactly as it would publish, with a "Draft" ribbon.\n- Editors can revoke a link from the draft toolbar.' },
+      { id: 'e2', appId: 'a3', type: 'feature', priority: 'low', status: 'ideas', title: 'AI alt-text suggestions', desc: 'Suggest accessible alt text for uploaded images, editable before saving.', prompt: 'Suggest image alt text.\n\n- On image upload, propose alt text the editor can accept or rewrite.\n- Never save without alt text; warn if left blank.\n- Keep suggestions concise and descriptive.' },
+      { id: 'e3', appId: 'a3', type: 'bug', priority: 'high', status: 'ideas', title: 'Slug collision on publish', desc: 'Publishing two posts with the same title silently overwrites the first one\u2019s slug.', prompt: 'Fix slug collisions on publish.\n\n- Detect duplicate slugs at publish time.\n- Auto-append a numeric suffix and surface it to the editor before confirming.\n- Add a test for the collision path.' },
+
+      // Hearth (a4)
+      { id: 'f1', appId: 'a4', type: 'bug', priority: 'high', status: 'ready', title: 'Reconnect on MQTT drop', desc: 'Devices go stale when the broker connection drops; needs exponential-backoff reconnect.', prompt: 'Add resilient MQTT reconnection.\n\n- Detect broker disconnects and reconnect with exponential backoff + jitter.\n- Re-subscribe to all device topics after reconnect.\n- Mark devices "stale" in the UI while disconnected.' },
+      { id: 'f2', appId: 'a4', type: 'enhancement', priority: 'low', status: 'ideas', title: 'Scene scheduling', desc: 'Schedule lighting/temperature scenes by time of day and sunrise/sunset offsets.', prompt: 'Add scene scheduling.\n\n- Schedule scenes by clock time or sunrise/sunset +/- offset.\n- Per-day enable/disable.\n- A timeline view of the day\u2019s scheduled scenes.' },
+    ];
+  }
+
+  // ---- lifecycle ----
+  componentDidMount() { /* builds start when their board is opened */ }
+  componentWillUnmount() {
+    Object.values(this._timers).forEach((t) => clearInterval(t));
+    clearTimeout(this._tt);
+    clearTimeout(this._chatT);
+  }
+
+  // ---- helpers ----
+  _app(id) { return this.state.apps.find((a) => a.id === id); }
+  _card(id) { return this.state.cards.find((c) => c.id === id); }
+  _updateCard(id, fn) { this.setState((s) => ({ cards: s.cards.map((c) => (c.id === id ? fn(c) : c)) })); }
+  _stats(diff) { return diff.reduce((acc, f) => ({ add: acc.add + (f.add || 0), del: acc.del + (f.del || 0), files: acc.files + 1 }), { add: 0, del: 0, files: 0 }); }
+  _toast(msg) { clearTimeout(this._tt); this.setState({ toast: msg }); this._tt = setTimeout(() => this.setState({ toast: null }), 2400); }
+  _slug(title, type) {
+    const p = type === 'bug' ? 'fix' : type === 'enhancement' ? 'enh' : 'feat';
+    return p + '/' + title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 28);
+  }
+
+  // ---- navigation ----
+  openApp(id) {
+    this.setState({ view: 'board', appId: id });
+    this.state.cards.forEach((c) => { if (c.appId === id && c.status === 'building') this._runBuild(c.id); });
+  }
+  backToPicker() { this.setState({ view: 'picker', appId: null, openCardId: null }); }
+  openCard(id) {
+    const c = this._card(id);
+    this.setState({ openCardId: id, detailTab: c && c.status === 'review' ? 'diff' : this.state.detailTab });
+  }
+  closeCard() { this.setState({ openCardId: null }); }
+  setTab(t) { this.setState({ detailTab: t }); }
+  toggleLog(id) { this.setState((s) => ({ logOpen: { ...s.logOpen, [id]: !s.logOpen[id] } })); }
+
+  newCard() {
+    const appId = this.state.appId;
+    const id = 'n' + Date.now();
+    const card = { id, appId, type: 'feature', priority: 'med', status: 'ideas', title: 'Untitled card', desc: 'Describe what you want built, then edit the agent instructions before you dispatch.', prompt: 'Describe the feature, bug fix, or enhancement here.\n\n- What should change?\n- Any files or screens involved?\n- How will we know it works?' };
+    this.setState((s) => ({ cards: [card, ...s.cards], openCardId: id }));
+  }
+
+  editPrompt(id, val) { this._updateCard(id, (c) => ({ ...c, prompt: val })); }
+
+  // ---- dispatch / clone ----
+  startCard(id) {
+    const c = this._card(id);
+    if (!c) return;
+    if (this.state.agentStatus !== 'connected') {
+      this.setState({ connectOpen: true });
+      this._toast('Connect your machine to dispatch');
+      return;
+    }
+    const app = this._app(c.appId);
+    if (!app.cloned) {
+      this.setState({ cloneModal: { appId: app.id, cardId: id, appName: app.name, repo: app.repo } });
+      return;
+    }
+    this._dispatch(id);
+  }
+  _dispatch(id) {
+    const c = this._card(id);
+    const branch = c.branch || this._slug(c.title, c.type);
+    this._updateCard(id, (cc) => ({
+      ...cc, status: 'building', branch,
+      build: { progress: 0, currentStep: 'Queued', steps: [], logs: [
+        '$ codex run --task ' + id.toUpperCase() + ' --branch ' + branch,
+        '\u2192 Connecting to Codex\u2026',
+      ] },
+    }));
+    this.setState({ draggingId: null });
+    this._toast('Dispatched to Codex \u00b7 ' + branch);
+    setTimeout(() => this._runBuild(id), 400);
+  }
+  confirmClone() {
+    const m = this.state.cloneModal;
+    if (!m) return;
+    this.setState((s) => ({ apps: s.apps.map((a) => (a.id === m.appId ? { ...a, cloned: true } : a)), cloneModal: null }));
+    this._toast('Cloned ' + m.repo);
+    if (m.cardId) setTimeout(() => this._dispatch(m.cardId), 350);
+  }
+  cancelClone() { this.setState({ cloneModal: null }); }
+
+  // ---- local agent (bridge) ----
+  openConnect() { this.setState({ connectOpen: true }); }
+  closeConnect() { this.setState({ connectOpen: false }); }
+  reconnect() {
+    this.setState({ agentBusy: true });
+    clearTimeout(this._agentT);
+    this._agentT = setTimeout(() => { this.setState({ agentStatus: 'connected', agentBusy: false }); this._toast('Machine connected \u00b7 localhost:' + this.state.agentPort); }, 1500);
+  }
+  disconnect() { this.setState({ agentStatus: 'offline', agentBusy: false }); this._toast('Local agent disconnected'); }
+
+  // ---- build simulation ----
+  _runBuild(id) {
+    if (this._timers[id]) return;
+    this._timers[id] = setInterval(() => this._tick(id), 1100);
+  }
+  _tick(id) {
+    const c = this._card(id);
+    if (!c || c.status !== 'building') { clearInterval(this._timers[id]); delete this._timers[id]; return; }
+    const p = Math.min(100, c.build.progress + (4 + Math.floor(Math.random() * 5)));
+    const script = this._buildScript(c);
+    const logs = c.build.logs.slice();
+    if (logs.length < script.length) logs.push(script[logs.length]);
+    else logs.push('  \u00b7 working\u2026 (' + p + '%)');
+    this._updateCard(id, (cc) => ({ ...cc, build: { ...cc.build, progress: p, currentStep: this._curStep(p), logs } }));
+    if (p >= 100) { clearInterval(this._timers[id]); delete this._timers[id]; setTimeout(() => this._finishBuild(id), 650); }
+  }
+  _curStep(p) {
+    if (p < 12) return 'Cloning context';
+    if (p < 32) return 'Planning changes';
+    if (p < 68) return 'Editing files';
+    if (p < 92) return 'Running tests';
+    return 'Opening pull request';
+  }
+  _buildScript(c) {
+    return [
+      '\u2713 Repo synced \u00b7 ' + (this._app(c.appId) || {}).repo + ' @ main',
+      '\u2192 Reading the task & relevant files',
+      '\u2192 Planning the change set',
+      '\u270e editing source files',
+      '\u270e writing new components',
+      '  + wiring it together',
+      '\u25b6 running: yarn test --watch=false',
+      '  PASS  unit suite',
+      '  PASS  integration suite',
+      '\u2713 all tests passed',
+      '\u25b6 committing & opening pull request',
+    ];
+  }
+  _finishBuild(id) {
+    const c = this._card(id);
+    if (!c) return;
+    const diff = c.diff && c.diff.length ? c.diff : [
+      { file: 'src/screens/TrailDetail.tsx', add: 18, del: 3, lines: [
+        { t: 'ctx', text: '  const trail = useTrail(id);' },
+        { t: 'add', text: '  const onShare = useCallback(() => {' },
+        { t: 'add', text: '    Share.share({ url: `trailmix://trail/${trail.id}`, title: trail.name });' },
+        { t: 'add', text: '  }, [trail]);' },
+        { t: 'add', text: '' },
+        { t: 'add', text: '  <ShareButton onPress={onShare} />' },
+      ] },
+      { file: 'src/components/ShareSheet.tsx', add: 41, del: 0, lines: [
+        { t: 'add', text: 'export function ShareButton({ onPress }) {' },
+        { t: 'add', text: '  return <IconButton icon="share" onPress={onPress} accessibilityLabel="Share trail" />;' },
+        { t: 'add', text: '}' },
+      ] },
+      { file: 'src/navigation/links.ts', add: 8, del: 1, lines: [
+        { t: 'del', text: "  prefixes: ['trailmix://']," },
+        { t: 'add', text: "  prefixes: ['trailmix://', 'https://trailmix.app']," },
+        { t: 'add', text: '  config: { screens: { TrailDetail: "trail/:id" } },' },
+      ] },
+    ];
+    this._updateCard(id, (cc) => ({
+      ...cc, status: 'review', build: { ...cc.build, progress: 100, currentStep: 'Done' }, diff,
+      chat: (cc.chat && cc.chat.length) ? cc.chat : [
+        { role: 'agent', text: 'Build complete. Added a native share sheet and a `trailmix://trail/:id` deep link so shared trails open straight in the app. 3 files changed, all tests passing. Want a copy-link fallback for folks without the app installed?' },
+      ],
+    }));
+    this._toast('Ready for review \u00b7 ' + (c.branch || ''));
+  }
+
+  // ---- review actions ----
+  moveCard(id, key) {
+    if (!id) return;
+    const c = this._card(id);
+    if (!c || c.status === key) { this.setState({ draggingId: null }); return; }
+    if (key === 'building') { this.startCard(id); return; }
+    this._updateCard(id, (cc) => ({ ...cc, status: key }));
+    this.setState({ draggingId: null });
+  }
+  setChatDraft(id, val) { this.setState((s) => ({ chatDrafts: { ...s.chatDrafts, [id]: val } })); }
+  sendChat(id) {
+    const text = (this.state.chatDrafts[id] || '').trim();
+    if (!text) return;
+    this._updateCard(id, (c) => ({ ...c, chat: [...(c.chat || []), { role: 'user', text }] }));
+    this.setState((s) => ({ chatDrafts: { ...s.chatDrafts, [id]: '' } }));
+    clearTimeout(this._chatT);
+    this._chatT = setTimeout(() => {
+      this._updateCard(id, (c) => ({ ...c, chat: [...(c.chat || []), { role: 'agent', text: 'On it \u2014 I\u2019ll fold that into the branch and re-run the affected tests. Give me a moment and the diff above will update.' }] }));
+    }, 1100);
+  }
+  requestChanges(id) {
+    const note = (this.state.chatDrafts[id] || '').trim();
+    this._updateCard(id, (c) => ({
+      ...c, status: 'building',
+      chat: [...(c.chat || []), ...(note ? [{ role: 'user', text: note }] : []), { role: 'agent', text: 'Got it \u2014 re-running with your feedback.' }],
+      build: { progress: 0, currentStep: 'Queued', logs: ['$ codex revise --branch ' + c.branch, '\u2192 Applying review feedback\u2026'], steps: [] },
+    }));
+    this.setState((s) => ({ chatDrafts: { ...s.chatDrafts, [id]: '' } }));
+    this._toast('Re-running with feedback');
+    setTimeout(() => this._runBuild(id), 400);
+  }
+  approveMerge(id) {
+    const c = this._card(id);
+    this._updateCard(id, (cc) => ({ ...cc, status: 'merged', mergedAt: 'Merged just now' }));
+    this._toast('Merged ' + (c.branch || '') + ' \u2192 main');
+  }
+
+  // ============ render values ============
+  renderVals() {
+    const h = React.createElement;
+    const TYPE = {
+      feature: { label: 'Feature', accent: 'var(--brand-primary)', bg: '#E1EEF6', fg: 'var(--brand-primary)' },
+      bug: { label: 'Bug', accent: 'var(--status-danger)', bg: 'var(--status-danger-surface)', fg: 'var(--status-danger)' },
+      enhancement: { label: 'Enhancement', accent: 'var(--color-purple-dark)', bg: '#EFEAF6', fg: 'var(--color-purple-dark)' },
+    };
+    const PRI = {
+      high: { label: 'High', color: 'var(--status-danger)' },
+      med: { label: 'Medium', color: 'var(--status-warning)' },
+      low: { label: 'Low', color: 'var(--neutral-500)' },
+    };
+    const STATUS = {
+      ideas: { label: 'Idea', bg: 'var(--neutral-100)', fg: 'var(--text-muted)' },
+      ready: { label: 'Ready', bg: '#E1EEF6', fg: 'var(--brand-primary)' },
+      building: { label: 'Building', bg: '#FFFBC2', fg: '#5C5400' },
+      review: { label: 'Needs Review', bg: 'var(--status-warning-surface)', fg: 'var(--status-warning)' },
+      merged: { label: 'Merged', bg: 'var(--status-success-surface)', fg: 'var(--status-success)' },
+    };
+    const COLS = [
+      { key: 'ideas', title: 'Ideas', accent: 'var(--neutral-400)', empty: 'Drop ideas here.' },
+      { key: 'ready', title: 'Ready', accent: 'var(--brand-primary)', empty: 'Nothing queued.' },
+      { key: 'building', title: 'Building', accent: 'var(--color-highlighter)', live: true, empty: 'No agents running.' },
+      { key: 'review', title: 'Needs Review', accent: 'var(--status-warning)', empty: 'Nothing to review.' },
+      { key: 'merged', title: 'Merged', accent: 'var(--status-success)', empty: 'Nothing shipped yet.' },
+    ];
+
+    const enrichCard = (c) => {
+      const t = TYPE[c.type], p = PRI[c.priority];
+      const stats = c.diff ? this._stats(c.diff) : null;
+      return {
+        onOpen: () => this.openCard(c.id),
+        onDragStart: () => this.setState({ draggingId: c.id }),
+        title: c.title, desc: c.desc,
+        typeLabel: t.label, typeBg: t.bg, typeFg: t.fg, typeAccent: t.accent,
+        priLabel: p.label, priColor: p.color,
+        isBuilding: c.status === 'building', isReview: c.status === 'review',
+        showBranch: !!c.branch && c.status !== 'building' && c.status !== 'review',
+        branch: c.branch || '',
+        buildStep: c.build ? c.build.currentStep : '',
+        progressText: c.build ? c.build.progress + '%' : '',
+        progressWidth: c.build ? c.build.progress + '%' : '0%',
+        reviewMeta: stats ? '+' + stats.add + ' \u2212' + stats.del + ' \u00b7 ' + stats.files + ' files' : '',
+      };
+    };
+
+    // apps for picker
+    const apps = this.state.apps.map((a) => {
+      const ac = this.state.cards.filter((c) => c.appId === a.id);
+      const building = ac.filter((c) => c.status === 'building').length;
+      const initials = a.name.split(/\s+/).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
+      return {
+        onOpen: () => this.openApp(a.id),
+        name: a.name, repo: a.repo, stack: a.stack, accent: a.accent, initials,
+        statusText: a.cloned ? 'Cloned' : 'Not cloned',
+        cloneBg: a.cloned ? 'var(--status-success-surface)' : 'var(--status-warning-surface)',
+        cloneFg: a.cloned ? 'var(--status-success)' : 'var(--status-warning)',
+        countText: ac.length + ' cards' + (building ? ' \u00b7 ' + building + ' building' : ''),
+      };
+    });
+
+    const app = this._app(this.state.appId);
+    const appCards = this.state.cards.filter((c) => c.appId === this.state.appId);
+    const columns = COLS.map((col) => {
+      const list = appCards.filter((c) => c.status === col.key).map(enrichCard);
+      return {
+        key: col.key, title: col.title, accent: col.accent, live: !!col.live && list.length > 0,
+        count: list.length, isEmpty: list.length === 0, emptyText: col.empty, cards: list,
+        onDragOver: (e) => e.preventDefault(),
+        onDrop: (e) => { e.preventDefault(); this.moveCard(this.state.draggingId, col.key); },
+      };
+    });
+
+    const openCard = this._card(this.state.openCardId) || null;
+    const ocv = openCard ? (() => {
+      const t = TYPE[openCard.type], st = STATUS[openCard.status];
+      return { title: openCard.title, typeLabel: t.label, typeBg: t.bg, typeFg: t.fg, statusLabel: st.label, statusBg: st.bg, statusFg: st.fg };
+    })() : { title: '', typeLabel: '', typeBg: '', typeFg: '', statusLabel: '', statusBg: '', statusFg: '' };
+
+    const cm = this.state.cloneModal;
+
+    return {
+      isPicker: this.state.view === 'picker',
+      isBoard: this.state.view === 'board' && !!this.state.appId,
+      apps,
+      columns,
+      appName: app ? app.name : '',
+      appRepo: app ? app.repo : '',
+      boardCloneText: app && app.cloned ? 'Cloned' : 'Not cloned',
+      boardCloneBg: app && app.cloned ? 'var(--status-success-surface)' : 'var(--status-warning-surface)',
+      boardCloneFg: app && app.cloned ? 'var(--status-success)' : 'var(--status-warning)',
+      onBack: () => this.backToPicker(),
+      onNewCard: () => this.newCard(),
+      cardOpen: !!openCard,
+      openCardView: ocv,
+      detailBody: openCard ? this._renderDetail(openCard) : null,
+      onCloseCard: () => this.closeCard(),
+      stopProp: (e) => e.stopPropagation(),
+      cloneOpen: !!cm,
+      cloneModal: cm || { appName: '', repo: '' },
+      onConfirmClone: () => this.confirmClone(),
+      onCancelClone: () => this.cancelClone(),
+      agentDotColor: this.state.agentStatus === 'connected' ? 'var(--color-green-light)' : this.state.agentBusy ? 'var(--color-yellow-light)' : 'var(--color-orange-light)',
+      agentDotGlow: this.state.agentStatus === 'connected' ? 'rgba(78,185,111,.3)' : this.state.agentBusy ? 'rgba(253,219,0,.3)' : 'rgba(255,109,45,.3)',
+      agentLabel: this.state.agentStatus === 'connected' ? 'Agent \u00b7 localhost:' + this.state.agentPort : this.state.agentBusy ? 'Connecting\u2026' : 'Agent offline',
+      onOpenConnect: () => this.openConnect(),
+      connectOpen: this.state.connectOpen,
+      onCloseConnect: () => this.closeConnect(),
+      connectBody: this._renderConnect(),
+      toastOpen: !!this.state.toast,
+      toastText: this.state.toast || '',
+    };
+  }
+
+  _renderConnect() {
+    const h = React.createElement;
+    const st = this.state.agentStatus, busy = this.state.agentBusy;
+    const code = 'npx @dispatch/agent --pair 7F3A-29C1';
+    const statusRow = busy
+      ? h('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } }, [
+          h('span', { key: 's', style: { width: 16, height: 16, borderRadius: '50%', border: '2px solid var(--neutral-200)', borderTopColor: 'var(--brand-primary)', display: 'inline-block', animation: 'dpspin .8s linear infinite' } }),
+          h('span', { key: 't', style: { fontSize: 13, color: 'var(--text-muted)' } }, 'Waiting for the agent to pair\u2026'),
+        ])
+      : st === 'connected'
+        ? h('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } }, [
+            h('span', { key: 's', style: { width: 18, height: 18, borderRadius: '50%', background: 'var(--status-success)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11 } }, '\u2713'),
+            h('span', { key: 't', style: { fontSize: 13, color: 'var(--text-body)' } }, ['Connected \u00b7 ', h('span', { key: 'm', style: { fontFamily: 'var(--font-mono)', fontSize: 12.5 } }, 'localhost:' + this.state.agentPort), ' \u00b7 codex 0.42']),
+          ])
+        : h('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } }, [
+            h('span', { key: 's', style: { width: 8, height: 8, borderRadius: '50%', background: 'var(--status-warning)' } }),
+            h('span', { key: 't', style: { fontSize: 13, color: 'var(--text-muted)' } }, 'No agent detected on this machine.'),
+          ]);
+    const footer = st === 'connected'
+      ? [ this._btn('Done', 'primary', () => this.closeConnect(), { key: 'd' }), this._btn('Disconnect', 'secondary', () => this.disconnect(), { key: 'x' }) ]
+      : [ this._btn(busy ? 'Connecting\u2026' : "I\u2019ve run it \u2192", 'primary', () => this.reconnect(), { key: 'r', disabled: busy }), this._btn('Cancel', 'secondary', () => this.closeConnect(), { key: 'c' }) ];
+    return h('div', {}, [
+      h('div', { key: 'body', style: { padding: '24px 24px 20px' } }, [
+        h('div', { key: 'hd', style: { display: 'flex', alignItems: 'center', gap: 11, marginBottom: 12 } }, [
+          h('div', { key: 'i', style: { width: 38, height: 38, borderRadius: 'var(--radius-sm)', background: '#E1EEF6', color: 'var(--brand-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 } }, '\u2387'),
+          h('h3', { key: 't', style: { fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 19, margin: 0, color: 'var(--text-strong)' } }, 'Connect your machine'),
+        ]),
+        h('p', { key: 'p', style: { fontSize: 14, lineHeight: 1.55, color: 'var(--text-body)', margin: '0 0 16px' } }, 'Dispatch runs Codex on your own machine through a small local agent, so your code never leaves your computer. The board talks to it over localhost \u2014 start it once per session:'),
+        h('div', { key: 'code', style: { display: 'flex', alignItems: 'center', gap: 10, fontFamily: 'var(--font-mono)', fontSize: 12.5, color: 'var(--text-strong)', background: 'var(--color-dark-navy)', borderRadius: 'var(--radius-sm)', padding: '12px 14px', marginBottom: 16 } }, [
+          h('span', { key: 'd', style: { color: 'var(--color-highlighter)' } }, '$'),
+          h('span', { key: 'c', style: { color: '#CFE6F5', flex: 1 } }, code),
+          h('span', { key: 'cp', style: { color: 'var(--text-on-dark-muted)', fontSize: 11, cursor: 'pointer' }, title: 'Copy' }, 'copy'),
+        ]),
+        h('div', { key: 'st', style: { padding: '12px 14px', borderRadius: 'var(--radius-sm)', background: 'var(--neutral-50)', border: '1px solid var(--border-subtle)' } }, statusRow),
+      ]),
+      h('div', { key: 'foot', style: { padding: '14px 24px', background: 'var(--neutral-50)', borderTop: '1px solid var(--border-subtle)', display: 'flex', gap: 10, justifyContent: 'flex-end' } }, footer),
+    ]);
+  }
+
+  // ============ detail drawer body (React) ============
+  _label(txt) {
+    return React.createElement('div', { style: { fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 11, letterSpacing: '.12em', textTransform: 'uppercase', color: 'var(--text-subtle)', whiteSpace: 'nowrap' } }, txt);
+  }
+  _btn(label, variant, onClick, extra) {
+    const DS = (typeof window !== 'undefined' && window.MITREDesignSystem_b475d3) || {};
+    const Btn = DS.Button;
+    if (Btn) return React.createElement(Btn, Object.assign({ variant, onClick }, extra || {}), label);
+    return React.createElement('button', { onClick, style: { height: 40, padding: '0 18px', borderRadius: 'var(--radius-sm)', border: 'none', cursor: 'pointer', fontFamily: 'var(--font-heading)', fontWeight: 700, background: 'var(--brand-primary)', color: '#fff' } }, label);
+  }
+
+  _renderDetail(card) {
+    if (card.status === 'building') return this._detailBuilding(card);
+    if (card.status === 'review') return this._detailReview(card);
+    if (card.status === 'merged') return this._detailMerged(card);
+    return this._detailPlan(card);
+  }
+
+  _detailPlan(card) {
+    const h = React.createElement;
+    const app = this._app(card.appId);
+    const PRI = { high: 'High', med: 'Medium', low: 'Low' };
+    const metaTile = (k, v, mono) => h('div', { style: { flex: 1, background: 'var(--neutral-50)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)', padding: '10px 12px' } }, [
+      h('div', { key: 'k', style: { fontSize: 10.5, letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--text-subtle)', fontWeight: 700, fontFamily: 'var(--font-heading)', marginBottom: 4 } }, k),
+      h('div', { key: 'v', style: { fontSize: 13.5, fontWeight: 600, color: 'var(--text-strong)', fontFamily: mono ? 'var(--font-mono)' : 'var(--font-body)' } }, v),
+    ]);
+    return h('div', { style: { padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: 18 } }, [
+      h('div', { key: 'desc' }, [ this._label('Description'), h('p', { style: { margin: '7px 0 0', fontSize: 14, lineHeight: 1.55, color: 'var(--text-body)' } }, card.desc) ]),
+      h('div', { key: 'meta', style: { display: 'flex', gap: 10 } }, [
+        metaTile('Type', card.type[0].toUpperCase() + card.type.slice(1)),
+        metaTile('Priority', PRI[card.priority]),
+        metaTile('Base', app.base, true),
+      ]),
+      h('div', { key: 'prompt' }, [
+        h('div', { style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 } }, [
+          this._label('Agent instructions'),
+          h('span', { key: 'b', style: { display: 'inline-flex', alignItems: 'center', height: 19, padding: '0 8px', borderRadius: 'var(--radius-pill)', background: '#FFFBC2', color: '#5C5400', fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 10, letterSpacing: '.05em', textTransform: 'uppercase', whiteSpace: 'nowrap', flexShrink: 0 } }, 'Sent to Codex'),
+        ]),
+        h('p', { style: { margin: '4px 0 8px', fontSize: 12.5, color: 'var(--text-muted)', lineHeight: 1.5 } }, 'This exact prompt is what Codex receives. Edit it before you dispatch.'),
+        h('textarea', { value: card.prompt, onChange: (e) => this.editPrompt(card.id, e.target.value), style: { width: '100%', minHeight: 188, resize: 'vertical', padding: '13px 14px', border: '1px solid var(--border-default)', borderRadius: 'var(--radius-sm)', fontFamily: 'var(--font-mono)', fontSize: 12.5, lineHeight: 1.65, color: 'var(--text-strong)', background: 'var(--neutral-50)', outline: 'none' } }),
+      ]),
+      h('div', { key: 'callout', style: { display: 'flex', alignItems: 'center', gap: 10, padding: '11px 13px', borderRadius: 'var(--radius-sm)', background: app.cloned ? 'var(--status-success-surface)' : 'var(--status-warning-surface)', borderLeft: '3px solid ' + (app.cloned ? 'var(--status-success)' : 'var(--status-warning)') } }, [
+        h('span', { key: 'i', style: { fontSize: 14, color: app.cloned ? 'var(--status-success)' : 'var(--status-warning)' } }, app.cloned ? '\u2713' : '\u26a0'),
+        h('span', { key: 't', style: { fontSize: 13, color: 'var(--text-body)' } }, app.cloned
+          ? ['Repo ready \u2014 ', h('span', { key: 'm', style: { fontFamily: 'var(--font-mono)', fontSize: 12.5 } }, app.repo + ' @ ' + app.base)]
+          : ['Repo not cloned \u2014 we\u2019ll clone ', h('span', { key: 'm', style: { fontFamily: 'var(--font-mono)', fontSize: 12.5 } }, app.repo), ' first.']),
+      ]),
+      h('div', { key: 'actions', style: { display: 'flex', gap: 10, marginTop: 2 } }, [
+        this._btn('Start build \u2192', 'highlighter', () => this.startCard(card.id), { key: 'go' }),
+        this._btn('Close', 'secondary', () => this.closeCard(), { key: 'cl' }),
+      ]),
+    ]);
+  }
+
+  _detailBuilding(card) {
+    const h = React.createElement;
+    const b = card.build || { progress: 0, logs: [], currentStep: '' };
+    const stepDefs = [
+      { id: 's1', label: 'Cloning context', done: b.progress >= 12, active: b.progress < 12 },
+      { id: 's2', label: 'Planning changes', done: b.progress >= 32, active: b.progress >= 12 && b.progress < 32 },
+      { id: 's3', label: 'Editing files', done: b.progress >= 68, active: b.progress >= 32 && b.progress < 68 },
+      { id: 's4', label: 'Running tests', done: b.progress >= 92, active: b.progress >= 68 && b.progress < 92 },
+      { id: 's5', label: 'Opening pull request', done: b.progress >= 100, active: b.progress >= 92 && b.progress < 100 },
+    ];
+    const open = this.state.logOpen[card.id] !== false; // default open
+    const icon = (s) => s.done
+      ? h('span', { style: { width: 20, height: 20, borderRadius: '50%', background: 'var(--status-success)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, flex: '0 0 20px' } }, '\u2713')
+      : s.active
+        ? h('span', { style: { width: 20, height: 20, borderRadius: '50%', border: '2px solid var(--neutral-200)', borderTopColor: 'var(--brand-primary)', display: 'inline-block', flex: '0 0 20px', animation: 'dpspin .8s linear infinite' } })
+        : h('span', { style: { width: 20, height: 20, borderRadius: '50%', border: '2px solid var(--border-default)', display: 'inline-block', flex: '0 0 20px' } });
+
+    return h('div', { style: { display: 'flex', flexDirection: 'column', height: '100%' } }, [
+      h('div', { key: 'top', style: { padding: '18px 22px', borderBottom: '1px solid var(--border-subtle)' } }, [
+        h('div', { style: { display: 'flex', alignItems: 'center', gap: 9, marginBottom: 12 } }, [
+          h('span', { key: 'd', style: { width: 9, height: 9, borderRadius: '50%', background: 'var(--color-highlighter)', boxShadow: '0 0 0 4px rgba(255,246,1,.28)', animation: 'dppulse 1.3s ease-in-out infinite' } }),
+          h('span', { key: 't', style: { fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 14, color: 'var(--text-strong)' } }, 'Codex is building\u2026'),
+          h('span', { key: 's', style: { marginLeft: 'auto', fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-muted)' } }, '\u268e ' + card.branch),
+        ]),
+        h('div', { style: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 } }, [
+          h('div', { key: 'bar', style: { flex: 1, height: 8, borderRadius: 99, background: 'var(--neutral-200)', overflow: 'hidden' } },
+            h('div', { style: { height: '100%', width: b.progress + '%', backgroundImage: 'linear-gradient(90deg, var(--color-highlighter), #FFE94D)', backgroundSize: '28px 28px', animation: 'dpstripe .8s linear infinite', transition: 'width .5s var(--ease-standard)' } })),
+          h('span', { key: 'p', style: { fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 700, color: 'var(--text-strong)', minWidth: 42, textAlign: 'right' } }, b.progress + '%'),
+        ]),
+        h('div', { style: { fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-muted)' } }, b.currentStep),
+      ]),
+      h('div', { key: 'time', style: { padding: '16px 22px', display: 'flex', flexDirection: 'column', gap: 12 } }, stepDefs.map((s) =>
+        h('div', { key: s.id, style: { display: 'flex', alignItems: 'center', gap: 11 } }, [
+          icon(s),
+          h('span', { key: 'l', style: { fontSize: 14, fontWeight: s.active ? 700 : 500, color: s.done || s.active ? 'var(--text-strong)' : 'var(--text-subtle)' } }, s.label),
+        ]))),
+      h('div', { key: 'logwrap', style: { padding: '0 22px 16px', flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 } }, [
+        h('button', { key: 'tg', onClick: () => this.toggleLog(card.id), style: { display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none', cursor: 'pointer', padding: '6px 0', color: 'var(--text-muted)' } }, [
+          h('span', { key: 'c', style: { fontSize: 11, transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .15s' } }, '\u25b6'),
+          h('span', { key: 't', style: { fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 12, letterSpacing: '.06em', textTransform: 'uppercase', whiteSpace: 'nowrap' } }, 'Raw log'),
+        ]),
+        open ? h('div', { key: 'term', ref: (el) => { if (el) el.scrollTop = el.scrollHeight; }, style: { flex: 1, minHeight: 140, overflowY: 'auto', background: 'var(--color-dark-navy)', borderRadius: 'var(--radius-sm)', padding: '12px 14px', fontFamily: 'var(--font-mono)', fontSize: 12, lineHeight: 1.7, color: '#CFE6F5' } },
+          b.logs.map((ln, i) => h('div', { key: i, style: { whiteSpace: 'pre-wrap', color: ln.indexOf('\u2713') === 0 || ln.indexOf('PASS') > -1 ? '#7BE0A0' : ln.indexOf('$') === 0 ? 'var(--color-highlighter)' : ln.indexOf('\u270e') === 0 ? '#9BD4FF' : '#CFE6F5' } }, ln))
+        ) : null,
+      ]),
+      h('div', { key: 'foot', style: { padding: '14px 22px', borderTop: '1px solid var(--border-subtle)', background: 'var(--neutral-50)' } },
+        this._btn('Stop build', 'secondary', () => { this._updateCard(card.id, (c) => ({ ...c, status: 'ready' })); if (this._timers[card.id]) { clearInterval(this._timers[card.id]); delete this._timers[card.id]; } this._toast('Build stopped'); })),
+    ]);
+  }
+
+  _detailReview(card) {
+    const h = React.createElement;
+    const stats = this._stats(card.diff || []);
+    const tab = this.state.detailTab;
+    const tabBtn = (key, label) => h('button', { key, onClick: () => this.setTab(key), style: { padding: '12px 16px', background: 'none', border: 'none', borderBottom: '2px solid ' + (tab === key ? 'var(--brand-primary)' : 'transparent'), cursor: 'pointer', fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 13.5, color: tab === key ? 'var(--brand-primary)' : 'var(--text-muted)' } }, label);
+
+    const diffView = h('div', { style: { padding: '4px 0 8px' } }, (card.diff || []).map((f, i) =>
+      h('div', { key: i, style: { margin: '0 0 14px' } }, [
+        h('div', { key: 'hd', style: { display: 'flex', alignItems: 'center', gap: 8, padding: '8px 16px', background: 'var(--neutral-100)', borderTop: '1px solid var(--border-subtle)', borderBottom: '1px solid var(--border-subtle)' } }, [
+          h('span', { key: 'f', style: { fontFamily: 'var(--font-mono)', fontSize: 12.5, color: 'var(--text-strong)' } }, f.file),
+          h('span', { key: 'a', style: { marginLeft: 'auto', fontFamily: 'var(--font-mono)', fontSize: 11.5, fontWeight: 700, color: 'var(--status-success)' } }, '+' + f.add),
+          h('span', { key: 'd', style: { fontFamily: 'var(--font-mono)', fontSize: 11.5, fontWeight: 700, color: 'var(--status-danger)' } }, '\u2212' + f.del),
+        ]),
+        f.lines && f.lines.length ? h('div', { key: 'ln' }, f.lines.map((ln, j) => {
+          const bg = ln.t === 'add' ? '#E6F3EA' : ln.t === 'del' ? '#FBE7E8' : '#fff';
+          const col = ln.t === 'add' ? '#1c6b39' : ln.t === 'del' ? '#a3232a' : 'var(--text-body)';
+          const pre = ln.t === 'add' ? '+' : ln.t === 'del' ? '\u2212' : '\u00a0';
+          return h('div', { key: j, style: { display: 'flex', background: bg, padding: '1px 14px', fontFamily: 'var(--font-mono)', fontSize: 12, lineHeight: 1.7, color: col, whiteSpace: 'pre-wrap' } }, [
+            h('span', { key: 'p', style: { opacity: .55, width: 12, flex: '0 0 12px', userSelect: 'none' } }, pre),
+            h('span', { key: 't' }, ln.text || '\u00a0'),
+          ]);
+        })) : h('div', { key: 'na', style: { padding: '12px 16px', fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-subtle)' } }, 'Binary / large change \u2014 view on GitHub'),
+      ])));
+
+    const draft = this.state.chatDrafts[card.id] || '';
+    const chatView = h('div', { style: { display: 'flex', flexDirection: 'column', height: '100%' } }, [
+      h('div', { key: 'msgs', ref: (el) => { if (el) el.scrollTop = el.scrollHeight; }, style: { flex: 1, overflowY: 'auto', padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 12, minHeight: 200 } },
+        (card.chat || []).map((m, i) => h('div', { key: i, style: { alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start', maxWidth: '86%' } }, [
+          h('div', { key: 'r', style: { fontSize: 10.5, letterSpacing: '.08em', textTransform: 'uppercase', fontWeight: 700, color: 'var(--text-subtle)', marginBottom: 4, textAlign: m.role === 'user' ? 'right' : 'left', fontFamily: 'var(--font-heading)' } }, m.role === 'user' ? 'You' : 'Codex'),
+          h('div', { key: 'b', style: { padding: '10px 13px', borderRadius: 'var(--radius-md)', fontSize: 13.5, lineHeight: 1.5, background: m.role === 'user' ? 'var(--brand-primary)' : 'var(--neutral-100)', color: m.role === 'user' ? '#fff' : 'var(--text-body)' } }, m.text),
+        ]))),
+      h('div', { key: 'in', style: { padding: '12px 16px', borderTop: '1px solid var(--border-subtle)', display: 'flex', gap: 8, alignItems: 'flex-end' } }, [
+        h('textarea', { key: 'ta', value: draft, placeholder: 'Send follow-up instructions to Codex\u2026', onChange: (e) => this.setChatDraft(card.id, e.target.value), onKeyDown: (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); this.sendChat(card.id); } }, style: { flex: 1, minHeight: 40, maxHeight: 110, resize: 'none', padding: '10px 12px', border: '1px solid var(--border-default)', borderRadius: 'var(--radius-sm)', fontFamily: 'var(--font-body)', fontSize: 13.5, lineHeight: 1.4, color: 'var(--text-strong)', outline: 'none' } }),
+        this._btn('Send', 'primary', () => this.sendChat(card.id), { key: 'sb' }),
+      ]),
+    ]);
+
+    return h('div', { style: { display: 'flex', flexDirection: 'column', height: '100%' } }, [
+      h('div', { key: 'sum', style: { padding: '12px 22px', display: 'flex', alignItems: 'center', gap: 14, borderBottom: '1px solid var(--border-subtle)', background: 'var(--neutral-50)' } }, [
+        h('span', { key: 'b', style: { fontFamily: 'var(--font-mono)', fontSize: 12.5, color: 'var(--text-muted)' } }, '\u268e ' + card.branch),
+        h('span', { key: 'a', style: { marginLeft: 'auto', fontFamily: 'var(--font-mono)', fontSize: 12.5, fontWeight: 700, color: 'var(--status-success)' } }, '+' + stats.add),
+        h('span', { key: 'd', style: { fontFamily: 'var(--font-mono)', fontSize: 12.5, fontWeight: 700, color: 'var(--status-danger)' } }, '\u2212' + stats.del),
+        h('span', { key: 'f', style: { fontFamily: 'var(--font-mono)', fontSize: 12.5, color: 'var(--text-muted)' } }, stats.files + ' files'),
+      ]),
+      h('div', { key: 'tabs', style: { display: 'flex', gap: 4, padding: '0 18px', borderBottom: '1px solid var(--border-subtle)' } }, [tabBtn('diff', 'Diff'), tabBtn('chat', 'Chat')]),
+      h('div', { key: 'body', style: { flex: 1, overflowY: tab === 'diff' ? 'auto' : 'hidden', minHeight: 0 } }, tab === 'diff' ? diffView : chatView),
+      h('div', { key: 'foot', style: { padding: '14px 22px', borderTop: '1px solid var(--border-subtle)', background: 'var(--neutral-50)', display: 'flex', gap: 10 } }, [
+        this._btn('Approve & merge', 'primary', () => this.approveMerge(card.id), { key: 'm' }),
+        this._btn('Request changes', 'secondary', () => this.requestChanges(card.id), { key: 'r' }),
+      ]),
+    ]);
+  }
+
+  _detailMerged(card) {
+    const h = React.createElement;
+    const stats = this._stats(card.diff || []);
+    return h('div', { style: { padding: '40px 28px', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 14 } }, [
+      h('div', { key: 'ic', style: { width: 64, height: 64, borderRadius: '50%', background: 'var(--status-success-surface)', color: 'var(--status-success)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 32 } }, '\u2713'),
+      h('h2', { key: 't', style: { fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 24, margin: 0, color: 'var(--text-strong)' } }, 'Merged to main'),
+      h('p', { key: 'p', style: { margin: 0, fontSize: 14.5, lineHeight: 1.55, color: 'var(--text-muted)', maxWidth: 360 } }, card.desc),
+      h('div', { key: 'br', style: { fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--text-body)', background: 'var(--neutral-50)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)', padding: '8px 14px' } }, '\u268e ' + card.branch + '  \u2192  main'),
+      h('div', { key: 'st', style: { display: 'flex', gap: 14, fontFamily: 'var(--font-mono)', fontSize: 13 } }, [
+        h('span', { key: 'a', style: { color: 'var(--status-success)', fontWeight: 700 } }, '+' + stats.add),
+        h('span', { key: 'd', style: { color: 'var(--status-danger)', fontWeight: 700 } }, '\u2212' + stats.del),
+        h('span', { key: 'f', style: { color: 'var(--text-muted)' } }, stats.files + ' files'),
+      ]),
+      h('a', { key: 'pr', href: '#', onClick: (e) => e.preventDefault(), style: { fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 14, color: 'var(--brand-primary)', textDecoration: 'none', marginTop: 4 } }, 'View pull request \u2192'),
+      h('div', { key: 'tm', style: { fontSize: 12.5, color: 'var(--text-subtle)' } }, card.mergedAt || ''),
+    ]);
+  }
+}
+</script>
+</body>
+</html>

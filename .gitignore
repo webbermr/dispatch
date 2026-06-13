@@ -1,0 +1,13 @@
+# Dependencies & build output
+node_modules/
+dist/
+
+# OS / editor
+.DS_Store
+*.local
+
+# Local Claude Code settings
+.claude/
+
+# Local scratch repo used for testing (its own git repo)
+dispatch-sandbox/

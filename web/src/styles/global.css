@@ -1,0 +1,87 @@
+@import './tokens.css';
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--neutral-50);
+  font-family: var(--font-body);
+  color: var(--text-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+textarea,
+input,
+button {
+  font-family: inherit;
+}
+
+button {
+  font-family: var(--font-heading);
+}
+
+:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* ---- Keyframes (mirror the prototype) ---- */
+@keyframes dpspin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes dppulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.3;
+    transform: scale(0.65);
+  }
+}
+@keyframes dpfade {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes dpstripe {
+  from {
+    background-position: 0 0;
+  }
+  to {
+    background-position: 28px 0;
+  }
+}
+
+/* ---- Custom scrollbars ---- */
+.dp-scroll::-webkit-scrollbar {
+  height: 10px;
+  width: 10px;
+}
+.dp-scroll::-webkit-scrollbar-thumb {
+  background: var(--neutral-300);
+  border-radius: 99px;
+}
+.dp-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
