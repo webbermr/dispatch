@@ -42,6 +42,8 @@ export async function registerRepo(input: RegisterInput): Promise<AppRecord> {
     defaultBranch,
     // Default to opening PRs when the repo has a remote; otherwise merge locally.
     mergeStrategy: repoSlug ? 'pr' : 'merge',
+    buildLocation: 'worktree',
+    agent: 'codex',
   }
   cfg.apps.push(app)
   // The user explicitly chose this path, so approve its parent as a root.

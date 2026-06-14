@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { STATUS, TYPE } from '../lib/constants'
 import { useStore } from '../store/useStore'
 import type { Card } from '../store/types'
@@ -25,14 +25,27 @@ const titleStyle = {
 /** The drawer title — editable in-place while the card is still a plan (Ideas/Ready). */
 function DrawerTitle({ card }: { card: Card }) {
   const editCard = useStore((s) => s.editCard)
+  const focusTitleCardId = useStore((s) => s.focusTitleCardId)
+  const consumeTitleFocus = useStore((s) => s.consumeTitleFocus)
   const [focused, setFocused] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
   const editable = card.status === 'ideas' || card.status === 'ready'
+
+  // Focus + select the title of a freshly-created card (one-shot).
+  useEffect(() => {
+    if (editable && focusTitleCardId === card.id && inputRef.current) {
+      inputRef.current.focus()
+      inputRef.current.select()
+      consumeTitleFocus()
+    }
+  }, [editable, focusTitleCardId, card.id, consumeTitleFocus])
 
   if (!editable) {
     return <h2 style={{ ...titleStyle, margin: 0 }}>{card.title}</h2>
   }
   return (
     <input
+      ref={inputRef}
       value={card.title}
       onChange={(e) => editCard(card.id, { title: e.target.value })}
       onFocus={(e) => {

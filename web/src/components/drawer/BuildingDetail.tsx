@@ -1,3 +1,4 @@
+import { agentLabel } from '../../lib/constants'
 import { useStore } from '../../store/useStore'
 import type { Card } from '../../store/types'
 import { Button } from '../Button'
@@ -60,8 +61,16 @@ export function BuildingDetail({ card }: { card: Card }) {
   const logOpen = useStore((s) => s.logOpen)
   const toggleLog = useStore((s) => s.toggleLog)
   const stopBuild = useStore((s) => s.stopBuild)
+  const appAgent = useStore((s) => s.apps.find((a) => a.id === card.appId)?.agent)
+
+  // Plan-first: a plan is awaiting your approval.
+  if (card.phase === 'plan_review' && card.plan) return <PlanReview card={card} />
+  // Race: the card is being built by two agents at once.
+  if (card.raceRunIds && card.raceRunIds.length > 1) return <RaceBuilding />
 
   const b = card.build ?? { progress: 0, logs: [], currentStep: '' }
+  // Prefer the run's recorded agent; fall back to the repo's selected agent.
+  const agentName = agentLabel(card.agentId ?? appAgent)
   const open = logOpen[card.id] !== false // default open
   const steps: StepDef[] = [
     { id: 's1', label: 'Cloning context', done: b.progress >= 12, active: b.progress < 12 },
@@ -85,7 +94,7 @@ export function BuildingDetail({ card }: { card: Card }) {
               animation: 'dppulse 1.3s ease-in-out infinite',
             }}
           />
-          <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 14, color: 'var(--text-strong)' }}>Codex is building…</span>
+          <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 14, color: 'var(--text-strong)' }}>{agentName} is building…</span>
           <span style={{ marginLeft: 'auto', fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-muted)' }}>⎇ {card.branch}</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
@@ -159,6 +168,92 @@ export function BuildingDetail({ card }: { card: Card }) {
           Stop build
         </Button>
       </div>
+    </div>
+  )
+}
+
+const panel = { flex: 1, overflowY: 'auto', minHeight: 0, padding: '20px 22px' } as const
+
+/** Plan-first: show the proposed plan and let the user approve or revise it. */
+function PlanReview({ card }: { card: Card }) {
+  const appAgent = useStore((s) => s.apps.find((a) => a.id === card.appId)?.agent)
+  const approvePlan = useStore((s) => s.approvePlan)
+  const requestPlanChanges = useStore((s) => s.requestPlanChanges)
+  const chatDrafts = useStore((s) => s.chatDrafts)
+  const setChatDraft = useStore((s) => s.setChatDraft)
+  const name = agentLabel(card.agentId ?? appAgent)
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <div style={{ ...panel }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+          <span style={{ fontSize: 18 }}>📋</span>
+          <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 15, color: 'var(--text-strong)' }}>{name} proposed a plan</span>
+        </div>
+        <p style={{ margin: '0 0 12px', fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+          Review the approach before any code is written. Approve to implement, or send feedback to re-plan.
+        </p>
+        <div
+          style={{
+            whiteSpace: 'pre-wrap',
+            fontFamily: 'var(--font-mono)',
+            fontSize: 12.5,
+            lineHeight: 1.7,
+            color: 'var(--text-strong)',
+            background: 'var(--neutral-50)',
+            border: '1px solid var(--border-subtle)',
+            borderRadius: 'var(--radius-sm)',
+            padding: '14px 16px',
+          }}
+        >
+          {card.plan}
+        </div>
+        <textarea
+          value={chatDrafts[card.id] ?? ''}
+          onChange={(e) => setChatDraft(card.id, e.target.value)}
+          placeholder="Optional: feedback to revise the plan…"
+          rows={2}
+          style={{
+            width: '100%',
+            marginTop: 12,
+            resize: 'vertical',
+            minHeight: 44,
+            padding: '8px 10px',
+            border: '1px solid var(--border-default)',
+            borderRadius: 'var(--radius-sm)',
+            fontFamily: 'var(--font-body)',
+            fontSize: 13.5,
+            color: 'var(--text-strong)',
+            background: '#fff',
+            outline: 'none',
+          }}
+        />
+      </div>
+      <div style={{ padding: '14px 22px', borderTop: '1px solid var(--border-subtle)', background: 'var(--neutral-50)', display: 'flex', gap: 10 }}>
+        <Button variant="highlighter" onClick={() => approvePlan(card.id)}>
+          Approve plan & build →
+        </Button>
+        <Button variant="secondary" onClick={() => requestPlanChanges(card.id)}>
+          Request changes
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+/** Race: both agents are building the same card in parallel. */
+function RaceBuilding() {
+  const health = useStore((s) => s.health)
+  const names = (health?.agents ?? []).filter((a) => a.installed).map((a) => a.label)
+  return (
+    <div style={{ ...panel, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', gap: 14 }}>
+      <span style={{ width: 26, height: 26, borderRadius: '50%', border: '3px solid var(--neutral-200)', borderTopColor: 'var(--color-purple-dark)', display: 'inline-block', animation: 'dpspin .8s linear infinite' }} />
+      <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 16, color: 'var(--text-strong)' }}>
+        ⚔ Racing {names.join(' vs ') || 'agents'}…
+      </div>
+      <p style={{ margin: 0, fontSize: 13.5, color: 'var(--text-muted)', maxWidth: 340, lineHeight: 1.5 }}>
+        Each agent is building this card on its own branch in parallel. When both finish, you'll compare their diffs and pick the winner.
+      </p>
     </div>
   )
 }

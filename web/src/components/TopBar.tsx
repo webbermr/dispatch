@@ -59,7 +59,7 @@ export function TopBar() {
           marginLeft: 2,
         }}
       >
-        Pick a card. Ship a feature.
+        Pick a card. Build a feature.
       </div>
       <div style={{ flex: 1 }} />
       <button
@@ -85,11 +85,6 @@ export function TopBar() {
         <span style={{ width: 8, height: 8, borderRadius: '50%', background: dotColor, boxShadow: `0 0 0 3px ${dotGlow}` }} />
         {label}
       </button>
-      <div style={{ width: 1, height: 22, background: 'rgba(255,255,255,.16)' }} />
-      <span style={{ fontSize: 11, letterSpacing: '.14em', color: 'var(--text-on-dark-muted)', textTransform: 'uppercase' }}>
-        Built with
-      </span>
-      <img src="/mitre-wordmark-white.svg" alt="MITRE" style={{ height: 16, opacity: 0.92 }} />
     </header>
   )
 }

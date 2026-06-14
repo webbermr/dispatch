@@ -6,7 +6,12 @@ function StatusRow() {
   const agentBusy = useStore((s) => s.agentBusy)
   const agentPort = useStore((s) => s.agentPort)
   const health = useStore((s) => s.health)
-  const codexLabel = health?.codexVersion ? `codex ${health.codexVersion}` : 'codex 0.42'
+  const installed = (health?.agents ?? []).filter((a) => a.installed)
+  const codexLabel = installed.length
+    ? installed.map((a) => `${a.label}${a.version ? ' ' + a.version : ''}`).join(' · ')
+    : health?.codexVersion
+      ? `codex ${health.codexVersion}`
+      : 'codex 0.42'
 
   if (agentBusy) {
     return (

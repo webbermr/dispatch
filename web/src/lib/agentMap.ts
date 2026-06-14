@@ -16,7 +16,14 @@ export function mapApp(a: AgentApp, index: number): App {
     base: a.defaultBranch,
     accent: ACCENTS[index % ACCENTS.length],
     mergeStrategy: a.mergeStrategy,
+    buildLocation: a.buildLocation,
+    agent: a.agent,
+    planFirst: a.planFirst,
+    autoRetry: a.autoRetry,
+    previewCommand: a.previewCommand,
     hasRemote: a.hasRemote,
+    forge: a.forge,
+    branches: a.branches,
   }
 }
 
@@ -61,10 +68,21 @@ export function mapCard(c: AgentCard, run?: AgentRun): Card {
     title: c.title,
     desc: c.desc,
     prompt: c.prompt,
+    base: c.base,
+    model: c.model,
+    queued: c.queued,
+    parentId: c.parentId,
+    // Fall back to createdAt so every card has a stable, sortable order.
+    order: c.order ?? c.createdAt,
     branch: c.branch ?? run?.branch,
     runId: c.runId,
     mergedAt: c.mergedAt,
     prUrl: c.prUrl ?? run?.prUrl,
+    worktreePath: run?.worktreePath,
+    agentId: run?.agentId,
+    phase: run?.phase,
+    plan: run?.plan,
+    raceRunIds: c.raceRunIds,
   }
   if (run) {
     card.build = { progress: run.progress, currentStep: currentStepLabel(run), logs: run.logs }

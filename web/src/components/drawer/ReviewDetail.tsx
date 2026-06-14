@@ -1,6 +1,9 @@
+import { useEffect, useState } from 'react'
+import { agent, type AgentRun } from '../../lib/agentClient'
+import { agentLabel } from '../../lib/constants'
 import { diffStats } from '../../lib/helpers'
 import { useStore } from '../../store/useStore'
-import type { Card, DiffFile, DetailTab } from '../../store/types'
+import type { Card, DiffFile, DetailTab, CodingAgentId } from '../../store/types'
 import { Button } from '../Button'
 
 function DiffView({ diff }: { diff: DiffFile[] }) {
@@ -130,11 +133,89 @@ function ChatView({ card }: { card: Card }) {
   )
 }
 
+/** A one-line dev-server preview control for the worktree under review. */
+function PreviewBar({ card }: { card: Card }) {
+  const preview = useStore((s) => s.preview)
+  const startPreview = useStore((s) => s.startPreview)
+  const endPreview = useStore((s) => s.endPreview)
+  const app = useStore((s) => s.apps.find((a) => a.id === card.appId))
+  const setAppPreviewCommand = useStore((s) => s.setAppPreviewCommand)
+  const saved = app?.previewCommand ?? ''
+  const [cmd, setCmd] = useState(saved)
+  const mine = preview.cardId === card.id
+  const running = mine && preview.running
+  const commit = () => {
+    const v = cmd.trim()
+    if (v !== saved) setAppPreviewCommand(card.appId, v)
+  }
+  return (
+    <div style={{ padding: '9px 22px', borderBottom: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+      <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+        {running ? (preview.url ? <>Dev server live — <a href={preview.url} target="_blank" rel="noreferrer" style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, color: 'var(--brand-primary)' }}>{preview.url}</a></> : 'Starting dev server…') : 'Run this branch before you merge it.'}
+      </span>
+      {!running && (
+        <input
+          value={cmd}
+          onChange={(e) => setCmd(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              commit()
+              startPreview(card.id, cmd.trim() || undefined)
+            }
+          }}
+          placeholder="auto-detect (e.g. npm run dev)"
+          spellCheck={false}
+          title="Command that starts a dev server in this worktree. Leave blank to auto-detect from package.json."
+          style={{
+            flex: 1,
+            minWidth: 160,
+            height: 26,
+            padding: '0 9px',
+            border: '1px solid var(--border-default)',
+            borderRadius: 'var(--radius-sm)',
+            background: '#fff',
+            fontFamily: 'var(--font-mono)',
+            fontSize: 11.5,
+            color: 'var(--text-body)',
+            outline: 'none',
+          }}
+        />
+      )}
+      <div style={{ flex: running ? 1 : '0 0 auto' }} />
+      {running ? (
+        <button
+          onClick={() => endPreview(card.id)}
+          style={{ height: 26, padding: '0 12px', border: '1px solid var(--status-danger)', background: '#fff', borderRadius: 'var(--radius-sm)', cursor: 'pointer', fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 12, color: 'var(--status-danger)' }}
+        >
+          Stop preview
+        </button>
+      ) : (
+        <button
+          onClick={() => {
+            commit()
+            startPreview(card.id, cmd.trim() || undefined)
+          }}
+          style={{ height: 26, padding: '0 12px', border: '1px solid var(--border-default)', background: '#fff', borderRadius: 'var(--radius-sm)', cursor: 'pointer', fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 12, color: 'var(--brand-primary)' }}
+        >
+          ▶ Preview
+        </button>
+      )}
+    </div>
+  )
+}
+
 export function ReviewDetail({ card }: { card: Card }) {
   const tab = useStore((s) => s.detailTab)
   const setTab = useStore((s) => s.setTab)
   const approveMerge = useStore((s) => s.approveMerge)
   const requestChanges = useStore((s) => s.requestChanges)
+  const openWorktree = useStore((s) => s.openWorktree)
+  const live = useStore((s) => s.live)
+
+  // Race: two agents finished — compare their diffs and pick a winner.
+  if (card.raceRunIds && card.raceRunIds.length > 1) return <RaceReview card={card} />
+
   const stats = diffStats(card.diff || [])
 
   const tabBtn = (key: DetailTab, label: string) => (
@@ -174,6 +255,24 @@ export function ReviewDetail({ card }: { card: Card }) {
         <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12.5, fontWeight: 700, color: 'var(--status-danger)' }}>−{stats.del}</span>
         <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12.5, color: 'var(--text-muted)' }}>{stats.files} files</span>
       </div>
+      {live && card.worktreePath && (
+        <div style={{ padding: '9px 22px', borderBottom: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.4 }}>
+            <strong style={{ color: 'var(--text-body)' }}>{agentLabel(card.agentId)}</strong> built this on its own branch in{' '}
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, color: 'var(--text-body)' }} title={card.worktreePath}>
+              {card.worktreePath.replace(/^.*\/(\.dispatch\/worktrees\/[^/]+).*$/, '…/$1')}
+            </span>
+            {' '}— not your working copy.
+          </span>
+          <button
+            onClick={() => openWorktree(card.id)}
+            style={{ height: 26, padding: '0 10px', border: '1px solid var(--border-default)', background: '#fff', borderRadius: 'var(--radius-sm)', cursor: 'pointer', fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 12, color: 'var(--brand-primary)' }}
+          >
+            Open folder
+          </button>
+        </div>
+      )}
+      {live && card.worktreePath && <PreviewBar card={card} />}
       <div style={{ display: 'flex', gap: 4, padding: '0 18px', borderBottom: '1px solid var(--border-subtle)' }}>
         {tabBtn('diff', 'Diff')}
         {tabBtn('chat', 'Chat')}
@@ -188,6 +287,76 @@ export function ReviewDetail({ card }: { card: Card }) {
         <Button variant="secondary" onClick={() => requestChanges(card.id)}>
           Request changes
         </Button>
+      </div>
+    </div>
+  )
+}
+
+/** Race review: load both competing runs, show their diffs, and pick a winner. */
+function RaceReview({ card }: { card: Card }) {
+  const pickWinner = useStore((s) => s.pickWinner)
+  const [runs, setRuns] = useState<AgentRun[] | null>(null)
+  const [open, setOpen] = useState<string | null>(null)
+  const ids = (card.raceRunIds || []).join(',')
+
+  useEffect(() => {
+    let live = true
+    Promise.all((card.raceRunIds || []).map((id) => agent.getRun(id).catch(() => null)))
+      .then((rs) => {
+        if (!live) return
+        const got = rs.filter(Boolean) as AgentRun[]
+        setRuns(got)
+        setOpen((cur) => cur ?? got[0]?.id ?? null)
+      })
+    return () => {
+      live = false
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ids])
+
+  if (!runs) return <div style={{ padding: 24, color: 'var(--text-muted)', fontSize: 13 }}>Loading both builds…</div>
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <div style={{ padding: '14px 22px', borderBottom: '1px solid var(--border-subtle)', background: 'var(--neutral-50)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 16 }}>⚔</span>
+          <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 15, color: 'var(--text-strong)' }}>Two builds, one card — pick the winner</span>
+        </div>
+        <p style={{ margin: '6px 0 0', fontSize: 12.5, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+          Each agent built this on its own branch. Compare the diffs, then merge the one you like. The other branch is discarded.
+        </p>
+      </div>
+      <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
+        {runs.map((r) => {
+          const stats = diffStats(r.diff || [])
+          const isOpen = open === r.id
+          const failed = r.status === 'failed' || r.status === 'interrupted'
+          return (
+            <div key={r.id} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 22px', cursor: 'pointer' }} onClick={() => setOpen(isOpen ? null : r.id)}>
+                <span style={{ fontSize: 11, transform: isOpen ? 'rotate(90deg)' : 'none', transition: 'transform .15s', color: 'var(--text-muted)' }}>▶</span>
+                <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 14, color: 'var(--text-strong)' }}>{agentLabel(r.agentId as CodingAgentId)}</span>
+                {failed ? (
+                  <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--status-danger)' }}>failed</span>
+                ) : (
+                  <>
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 700, color: 'var(--status-success)' }}>+{stats.add}</span>
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 700, color: 'var(--status-danger)' }}>−{stats.del}</span>
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-muted)' }}>{stats.files} files</span>
+                  </>
+                )}
+                <div style={{ flex: 1 }} />
+                <span onClick={(e) => e.stopPropagation()}>
+                  <Button variant="primary" onClick={() => pickWinner(card.id, r.id)}>
+                    Pick this →
+                  </Button>
+                </span>
+              </div>
+              {isOpen && (r.diff?.length ? <DiffView diff={r.diff} /> : <div style={{ padding: '10px 22px 16px', fontSize: 12.5, color: 'var(--text-subtle)' }}>No changes recorded for this build.</div>)}
+            </div>
+          )
+        })}
       </div>
     </div>
   )

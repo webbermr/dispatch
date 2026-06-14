@@ -15,8 +15,13 @@ export function Card({ card }: { card: CardModel }) {
 
   const openCard = useStore((s) => s.openCard)
   const setDragging = useStore((s) => s.setDragging)
+  const dropOnCard = useStore((s) => s.dropOnCard)
+  const draggingId = useStore((s) => s.draggingId)
   const editCard = useStore((s) => s.editCard)
   const deleteCard = useStore((s) => s.deleteCard)
+  const [dragOver, setDragOver] = useState(false)
+  const [dropPos, setDropPos] = useState<'above' | 'below'>('above')
+  const dropPosRef = useRef<'above' | 'below'>('above') // synchronous, read on drop
 
   const t = TYPE[card.type]
   const p = PRI[card.priority]
@@ -72,10 +77,38 @@ export function Card({ card }: { card: CardModel }) {
     armTimer.current = setTimeout(() => setArmed(false), 2500)
   }
 
+  const showDropLine = dragOver && !!draggingId && draggingId !== card.id
+
   return (
     <article
       draggable={!editing}
-      onDragStart={() => setDragging(card.id)}
+      onDragStart={(e) => {
+        e.dataTransfer.setData('text/dispatch-card', card.id)
+        e.dataTransfer.effectAllowed = 'move'
+        setDragging(card.id)
+      }}
+      onDragEnd={() => {
+        setDragging(null)
+        setDragOver(false)
+      }}
+      onDragOver={(e) => {
+        e.preventDefault()
+        e.dataTransfer.dropEffect = 'move'
+        const rect = e.currentTarget.getBoundingClientRect()
+        const pos = e.clientY < rect.top + rect.height / 2 ? 'above' : 'below'
+        dropPosRef.current = pos
+        setDropPos(pos)
+        setDragOver(true)
+      }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={(e) => {
+        e.preventDefault()
+        e.stopPropagation()
+        setDragOver(false)
+        // The dragged id travels in the drag payload — timing-independent.
+        const draggedId = e.dataTransfer.getData('text/dispatch-card')
+        dropOnCard(draggedId, card.id, dropPosRef.current)
+      }}
       onClick={() => !editing && openCard(card.id)}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
@@ -86,8 +119,13 @@ export function Card({ card }: { card: CardModel }) {
         borderRadius: 'var(--radius-sm)',
         padding: '12px 13px',
         cursor: 'pointer',
-        boxShadow: hover ? 'var(--shadow-md)' : 'var(--shadow-xs)',
-        transform: hover && !editing ? 'translateY(-2px)' : 'none',
+        // A blue line above/below the card marks where the dragged card will land.
+        boxShadow: showDropLine
+          ? `0 ${dropPos === 'below' ? '3px' : '-3px'} 0 0 var(--brand-primary), var(--shadow-md)`
+          : hover
+            ? 'var(--shadow-md)'
+            : 'var(--shadow-xs)',
+        transform: hover && !editing && !showDropLine ? 'translateY(-2px)' : 'none',
         transition: 'box-shadow var(--duration-base) var(--ease-standard), transform var(--duration-base) var(--ease-standard)',
       }}
     >
@@ -110,6 +148,46 @@ export function Card({ card }: { card: CardModel }) {
         >
           {t.label}
         </span>
+        {card.queued && (
+          <span
+            title="Queued — waiting for a free build slot"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 4,
+              height: 20,
+              padding: '0 7px',
+              borderRadius: 'var(--radius-xs)',
+              background: 'var(--status-warning-surface, #FFF4E0)',
+              color: 'var(--status-warning, #9A6700)',
+              fontFamily: 'var(--font-heading)',
+              fontWeight: 700,
+              fontSize: 10,
+              letterSpacing: '.05em',
+              textTransform: 'uppercase',
+            }}
+          >
+            ⏳ Queued
+          </span>
+        )}
+        {card.model && (
+          <span
+            title={`Model: ${card.model}`}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              height: 20,
+              padding: '0 7px',
+              borderRadius: 'var(--radius-xs)',
+              background: 'var(--neutral-100)',
+              color: 'var(--text-muted)',
+              fontFamily: 'var(--font-mono)',
+              fontSize: 10,
+            }}
+          >
+            {card.model}
+          </span>
+        )}
         <div style={{ flex: 1 }} />
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 600, color: 'var(--text-muted)' }}>
           <span style={{ width: 7, height: 7, borderRadius: '50%', background: p.color }} />

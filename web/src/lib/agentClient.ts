@@ -22,9 +22,16 @@ export interface AgentHealth {
   codexInstalled: boolean
   ghInstalled: boolean
   ghAuthed: boolean
+  glabInstalled: boolean
+  glabAuthed: boolean
+  concurrency: number
+  agents: { id: CodingAgentId; label: string; installed: boolean; version: string | null; models: { id: string; label: string }[] }[]
 }
 
 export type MergeStrategy = 'pr' | 'merge'
+export type BuildLocation = 'worktree' | 'workdir'
+export type Forge = 'github' | 'gitlab' | 'other'
+export type CodingAgentId = 'codex' | 'claude'
 
 export interface AgentApp {
   id: string
@@ -33,12 +40,19 @@ export interface AgentApp {
   localPath: string
   defaultBranch: string
   mergeStrategy?: MergeStrategy
+  buildLocation?: BuildLocation
+  agent?: CodingAgentId
+  planFirst?: boolean
+  autoRetry?: boolean
+  previewCommand?: string
   cloned: boolean
   clean: boolean
   currentBranch: string | null
   ahead: number
   behind: number
   hasRemote: boolean
+  forge: Forge
+  branches: string[]
 }
 
 export type AgentCardStatus = 'ideas' | 'ready' | 'building' | 'review' | 'merged'
@@ -52,6 +66,12 @@ export interface AgentCard {
   title: string
   desc: string
   prompt: string
+  base?: string
+  model?: string
+  order?: number
+  queued?: boolean
+  parentId?: string
+  raceRunIds?: string[]
   runId?: string
   branch?: string
   mergedAt?: string
@@ -81,6 +101,14 @@ export interface AgentRun {
   diff: AgentDiffFile[]
   chat: { role: 'agent' | 'user'; text: string; ts: number }[]
   prUrl?: string
+  worktreePath?: string
+  agentId?: CodingAgentId
+  model?: string
+  attempt?: number
+  retryOf?: string
+  retriedAs?: string
+  phase?: 'plan_review' | 'build'
+  plan?: string
   error?: string
 }
 
@@ -98,6 +126,21 @@ export interface RepoDiagnosis {
   }
 }
 
+export interface CheckRunInfo {
+  name: string
+  state: string
+  bucket: string
+  link?: string
+  workflow?: string
+}
+
+export interface ChecksResult {
+  forge: Forge
+  prUrl: string | null
+  state: 'success' | 'failure' | 'pending' | 'none' | 'unsupported'
+  checks: CheckRunInfo[]
+}
+
 export type ServerEvent =
   | { type: 'run.step'; runId: string; step: string; state: 'pending' | 'active' | 'done' }
   | { type: 'run.log'; runId: string; line: string; stream: 'stdout' | 'stderr' }
@@ -105,10 +148,13 @@ export type ServerEvent =
   | { type: 'run.diff'; runId: string; files: AgentDiffFile[] }
   | { type: 'run.status'; runId: string; status: AgentRunStatus }
   | { type: 'run.message'; runId: string; message: { role: 'agent' | 'user'; text: string; ts: number } }
+  | { type: 'run.plan'; runId: string; plan: string }
   | { type: 'card.update'; card: AgentCard }
   | { type: 'card.remove'; cardId: string }
   | { type: 'app.remove'; appId: string }
   | { type: 'agent.status'; online: boolean }
+  | { type: 'queue.update'; concurrency: number; active: number; queued: number }
+  | { type: 'notice'; level: 'info' | 'error'; message: string; appId?: string }
 
 export class AgentError extends Error {
   constructor(public status: number, message: string) {
@@ -178,17 +224,26 @@ export class AgentClient {
   registerApp(input: { localPath: string; name?: string }): Promise<AgentApp> {
     return this.req('/apps', { method: 'POST', body: JSON.stringify(input) })
   }
+  cloneNewRepo(input: { repoUrl: string; parentDir: string; name?: string }): Promise<AgentApp> {
+    return this.req('/apps/clone-url', { method: 'POST', body: JSON.stringify(input) })
+  }
+  generateAgentsMd(id: string, force = false): Promise<{ path: string; bytes: number; overwritten: boolean }> {
+    return this.req(`/apps/${id}/agents-md`, { method: 'POST', body: JSON.stringify({ force }) })
+  }
   diagnose(localPath: string): Promise<RepoDiagnosis> {
     return this.req('/apps/diagnose', { method: 'POST', body: JSON.stringify({ localPath }) })
   }
   removeApp(id: string): Promise<void> {
     return this.req(`/apps/${id}`, { method: 'DELETE' })
   }
-  updateApp(id: string, patch: { mergeStrategy?: MergeStrategy; name?: string }): Promise<AgentApp> {
+  updateApp(id: string, patch: { mergeStrategy?: MergeStrategy; buildLocation?: BuildLocation; agent?: CodingAgentId; planFirst?: boolean; autoRetry?: boolean; previewCommand?: string; name?: string }): Promise<AgentApp> {
     return this.req(`/apps/${id}`, { method: 'PATCH', body: JSON.stringify(patch) })
   }
   clone(id: string): Promise<AgentApp> {
     return this.req(`/apps/${id}/clone`, { method: 'POST' })
+  }
+  pull(id: string): Promise<{ summary: string; status: AgentApp }> {
+    return this.req(`/apps/${id}/pull`, { method: 'POST' })
   }
 
   // ---- cards ----
@@ -212,8 +267,41 @@ export class AgentClient {
   getRun(id: string): Promise<AgentRun> {
     return this.req(`/runs/${id}`)
   }
-  dispatch(body: { appId: string; cardId: string; prompt: string; type: CardType; baseBranch?: string; title?: string }): Promise<{ runId: string; branch: string }> {
+  checks(id: string): Promise<ChecksResult> {
+    return this.req(`/runs/${id}/checks`)
+  }
+  dispatch(body: { appId: string; cardId: string; prompt: string; type: CardType; baseBranch?: string; title?: string; model?: string }): Promise<{ runId: string; branch: string; agentId: CodingAgentId } | { queued: true; agentId: CodingAgentId }> {
     return this.req('/runs', { method: 'POST', body: JSON.stringify(body) })
+  }
+  dispatchReady(appId: string): Promise<{ started: number; queued: number }> {
+    return this.req('/runs/dispatch-ready', { method: 'POST', body: JSON.stringify({ appId }) })
+  }
+  queue(): Promise<{ concurrency: number; active: number; queued: number }> {
+    return this.req('/queue')
+  }
+  decompose(cardId: string): Promise<{ ok: boolean }> {
+    return this.req(`/cards/${cardId}/decompose`, { method: 'POST' })
+  }
+  dequeue(cardId: string): Promise<AgentCard> {
+    return this.req(`/cards/${cardId}/dequeue`, { method: 'POST' })
+  }
+  race(body: { appId: string; cardId: string; prompt: string; type: CardType; baseBranch?: string; title?: string }): Promise<{ runIds: string[] }> {
+    return this.req('/runs/race', { method: 'POST', body: JSON.stringify(body) })
+  }
+  approvePlan(id: string): Promise<AgentRun> {
+    return this.req(`/runs/${id}/approve-plan`, { method: 'POST' })
+  }
+  requestPlanChanges(id: string, feedback?: string): Promise<AgentRun> {
+    return this.req(`/runs/${id}/request-plan-changes`, { method: 'POST', body: JSON.stringify({ feedback }) })
+  }
+  pickWinner(cardId: string, runId: string): Promise<AgentCard> {
+    return this.req(`/cards/${cardId}/pick-winner`, { method: 'POST', body: JSON.stringify({ runId }) })
+  }
+  preview(id: string, command?: string): Promise<{ command: string; url: string | null; logs: string[] }> {
+    return this.req(`/runs/${id}/preview`, { method: 'POST', body: JSON.stringify({ command }) })
+  }
+  stopPreview(id: string): Promise<{ ok: boolean }> {
+    return this.req(`/runs/${id}/preview/stop`, { method: 'POST' })
   }
   sendMessage(id: string, text: string): Promise<AgentRun> {
     return this.req(`/runs/${id}/messages`, { method: 'POST', body: JSON.stringify({ text }) })
@@ -226,6 +314,12 @@ export class AgentClient {
   }
   stop(id: string): Promise<AgentRun> {
     return this.req(`/runs/${id}/stop`, { method: 'POST' })
+  }
+  openRun(id: string): Promise<{ path: string; opened: string | null }> {
+    return this.req(`/runs/${id}/open`, { method: 'POST' })
+  }
+  checkoutRun(id: string): Promise<{ branch: string; path: string }> {
+    return this.req(`/runs/${id}/checkout`, { method: 'POST' })
   }
 
   /** Open the streaming socket and subscribe to all runs. */

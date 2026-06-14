@@ -1,11 +1,12 @@
 import { type ChildProcess, spawn } from 'node:child_process'
 import { run } from './git.js'
 import { log } from './log.js'
+import { type AgentController, type AgentHandlers, type AgentRunOpts, type CodingAgent, makeStepper } from './agents.js'
 import type { StepId } from '../types.js'
 
 const CODEX_BIN = process.env.DISPATCH_CODEX_BIN || 'codex'
 
-/** Probe `codex --version`. Drives the header chip's `codexInstalled` flag. */
+/** Probe `codex --version`. */
 export async function probeCodex(): Promise<{ installed: boolean; version: string | null }> {
   const r = await run(CODEX_BIN, ['--version'])
   if (r.code !== 0) return { installed: false, version: null }
@@ -14,22 +15,8 @@ export async function probeCodex(): Promise<{ installed: boolean; version: strin
   return { installed: true, version: m ? m[1] : r.stdout.trim() }
 }
 
-export interface CodexHandlers {
-  onLog: (line: string, stream: 'stdout' | 'stderr') => void
-  onStep: (step: StepId, state: 'active' | 'done') => void
-  onProgress: (pct: number) => void
-  onSession?: (sessionId: string) => void
-  /** Each assistant message; the manager keeps the last one for the review chat. */
-  onMessage?: (text: string) => void
-  onExit: (code: number) => void
-}
-
-export interface CodexController {
-  kill: () => void
-}
-
-/** Progress checkpoints per step transition (advisory — see spec §6). */
-const STEP_PCT: Record<StepId, number> = { cloning: 10, planning: 30, editing: 65, testing: 90, pr: 100 }
+type CodexHandlers = AgentHandlers
+type CodexController = AgentController
 
 /** Heuristic step mapping for a raw log line (fallback when an item type is generic). */
 function deriveStep(line: string): StepId | null {
@@ -61,10 +48,12 @@ interface CodexEvent {
  *   codex exec --cd <wt> --json --sandbox workspace-write "<prompt>"
  * Follow-ups resume the session: `codex exec resume <sessionId> "<prompt>"`.
  */
-export function runCodex(opts: { worktreePath: string; prompt: string; sessionId?: string }, h: CodexHandlers): CodexController {
-  const sandbox = (process.env.DISPATCH_CODEX_FLAGS || '--sandbox workspace-write').split(/\s+/).filter(Boolean)
-  // exec-level flags (--cd/--json/--sandbox) must precede the `resume` subcommand.
-  const base = ['exec', '--cd', opts.worktreePath, '--json', ...sandbox]
+export function runCodex(opts: AgentRunOpts, h: CodexHandlers): CodexController {
+  // Plan mode runs read-only so the agent can only propose, not edit.
+  const sandbox = opts.mode === 'plan' ? ['--sandbox', 'read-only'] : (process.env.DISPATCH_CODEX_FLAGS || '--sandbox workspace-write').split(/\s+/).filter(Boolean)
+  const modelArgs = opts.model?.trim() ? ['--model', opts.model.trim()] : []
+  // exec-level flags (--cd/--json/--sandbox/--model) must precede the `resume` subcommand.
+  const base = ['exec', '--cd', opts.worktreePath, '--json', ...sandbox, ...modelArgs]
   const args = opts.sessionId ? [...base, 'resume', opts.sessionId, opts.prompt] : [...base, opts.prompt]
 
   log.info('spawning:', CODEX_BIN, args.slice(0, -1).join(' '), '<prompt>')
@@ -78,13 +67,7 @@ export function runCodex(opts: { worktreePath: string; prompt: string; sessionId
     return { kill: () => {} }
   }
 
-  const reachedStep: Record<StepId, boolean> = { cloning: false, planning: false, editing: false, testing: false, pr: false }
-  const advance = (step: StepId) => {
-    if (reachedStep[step]) return
-    reachedStep[step] = true
-    h.onStep(step, 'active')
-    h.onProgress(STEP_PCT[step])
-  }
+  const advance = makeStepper(h)
   advance('cloning')
 
   const onEvent = (ev: CodexEvent) => {
@@ -151,4 +134,16 @@ export function runCodex(opts: { worktreePath: string; prompt: string; sessionId
   child.on('close', (code) => h.onExit(code ?? -1))
 
   return { kill: () => child.kill('SIGTERM') }
+}
+
+export const codexAgent: CodingAgent = {
+  id: 'codex',
+  label: 'Codex',
+  models: [
+    { id: '', label: 'Default' },
+    { id: 'gpt-5.5', label: 'GPT‑5.5 — most capable' },
+    { id: 'gpt-5-codex', label: 'GPT‑5 Codex — tuned for code' },
+  ],
+  probe: probeCodex,
+  run: runCodex,
 }

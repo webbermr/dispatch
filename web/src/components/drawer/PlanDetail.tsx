@@ -1,28 +1,41 @@
 import { useState } from 'react'
-import { PRI } from '../../lib/constants'
-import { titleCase } from '../../lib/helpers'
+import { agentLabel, EXAMPLE_DESC, EXAMPLE_PROMPT, PRI, TYPE } from '../../lib/constants'
 import { useStore } from '../../store/useStore'
 import type { Card } from '../../store/types'
 import { Button } from '../Button'
 import { Overline } from './Overline'
 
-function MetaTile({ k, v, mono }: { k: string; v: string; mono?: boolean }) {
+const tileWrap = { flex: 1, background: 'var(--neutral-50)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)', padding: '10px 12px' } as const
+const tileLabel = { fontSize: 10.5, letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--text-subtle)', fontWeight: 700, fontFamily: 'var(--font-heading)', marginBottom: 4 } as const
+
+/** An editable meta tile rendered as an inline <select> that blends into the tile. */
+function SelectTile({ k, value, options, onChange, mono }: { k: string; value: string; options: { value: string; label: string }[]; onChange: (v: string) => void; mono?: boolean }) {
   return (
-    <div style={{ flex: 1, background: 'var(--neutral-50)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)', padding: '10px 12px' }}>
-      <div
+    <div style={tileWrap}>
+      <div style={tileLabel}>{k}</div>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
         style={{
-          fontSize: 10.5,
-          letterSpacing: '.1em',
-          textTransform: 'uppercase',
-          color: 'var(--text-subtle)',
-          fontWeight: 700,
-          fontFamily: 'var(--font-heading)',
-          marginBottom: 4,
+          width: '100%',
+          marginLeft: -2,
+          padding: '0 18px 0 2px',
+          border: 'none',
+          background: 'transparent',
+          fontSize: 13.5,
+          fontWeight: 600,
+          color: 'var(--text-strong)',
+          fontFamily: mono ? 'var(--font-mono)' : 'var(--font-body)',
+          cursor: 'pointer',
+          outline: 'none',
         }}
       >
-        {k}
-      </div>
-      <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text-strong)', fontFamily: mono ? 'var(--font-mono)' : 'var(--font-body)' }}>{v}</div>
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
     </div>
   )
 }
@@ -32,11 +45,28 @@ export function PlanDetail({ card }: { card: Card }) {
   const editCard = useStore((s) => s.editCard)
   const editPrompt = useStore((s) => s.editPrompt)
   const startCard = useStore((s) => s.startCard)
+  const raceCard = useStore((s) => s.raceCard)
   const closeCard = useStore((s) => s.closeCard)
   const deleteCard = useStore((s) => s.deleteCard)
+  const setCardModel = useStore((s) => s.setCardModel)
+  const decomposeCard = useStore((s) => s.decomposeCard)
+  const cancelQueued = useStore((s) => s.cancelQueued)
+  const health = useStore((s) => s.health)
+  const queue = useStore((s) => s.queue)
+  const live = useStore((s) => s.live)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const app = apps.find((a) => a.id === card.appId)
   if (!app) return null
+  const installedAgents = (health?.agents ?? []).filter((a) => a.installed).length
+  const canRace = live && installedAgents >= 2
+  // Models available within this repo's agent (live mode only).
+  const agentModels = (health?.agents ?? []).find((a) => a.id === (app.agent ?? 'codex'))?.models ?? []
+  const showModel = live && agentModels.length > 1
+
+  // Base-branch options: the repo's branches, ensuring the current choice is present.
+  const repoBranches = app.branches?.length ? app.branches : [app.base]
+  const curBase = card.base || app.base
+  const baseOptions = repoBranches.includes(curBase) ? repoBranches : [curBase, ...repoBranches]
 
   return (
     <div style={{ padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: 18 }}>
@@ -45,6 +75,9 @@ export function PlanDetail({ card }: { card: Card }) {
         <textarea
           value={card.desc}
           onChange={(e) => editCard(card.id, { desc: e.target.value })}
+          onFocus={() => {
+            if (card.desc === EXAMPLE_DESC) editCard(card.id, { desc: '' })
+          }}
           placeholder="What do you want built? A short summary."
           rows={2}
           style={{
@@ -58,7 +91,7 @@ export function PlanDetail({ card }: { card: Card }) {
             fontFamily: 'var(--font-body)',
             fontSize: 14,
             lineHeight: 1.55,
-            color: 'var(--text-body)',
+            color: card.desc === EXAMPLE_DESC ? 'var(--text-subtle)' : 'var(--text-body)',
             background: 'var(--neutral-50)',
             outline: 'none',
           }}
@@ -66,10 +99,31 @@ export function PlanDetail({ card }: { card: Card }) {
       </div>
 
       <div style={{ display: 'flex', gap: 10 }}>
-        <MetaTile k="Type" v={titleCase(card.type)} />
-        <MetaTile k="Priority" v={PRI[card.priority].label} />
-        <MetaTile k="Base" v={app.base} mono />
+        <SelectTile
+          k="Type"
+          value={card.type}
+          onChange={(v) => editCard(card.id, { type: v as Card['type'] })}
+          options={(['feature', 'bug', 'enhancement'] as const).map((t) => ({ value: t, label: TYPE[t].label }))}
+        />
+        <SelectTile
+          k="Priority"
+          value={card.priority}
+          onChange={(v) => editCard(card.id, { priority: v as Card['priority'] })}
+          options={(['high', 'med', 'low'] as const).map((p) => ({ value: p, label: PRI[p].label }))}
+        />
+        <SelectTile k="Base" mono value={card.base || app.base} onChange={(v) => editCard(card.id, { base: v })} options={baseOptions.map((b) => ({ value: b, label: b }))} />
       </div>
+
+      {showModel && (
+        <div style={{ display: 'flex', gap: 10 }}>
+          <SelectTile
+            k={`Model · ${agentLabel(app.agent)}`}
+            value={card.model ?? ''}
+            onChange={(v) => setCardModel(card.id, v)}
+            options={agentModels.map((m) => ({ value: m.id, label: m.label }))}
+          />
+        </div>
+      )}
 
       <div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
@@ -92,15 +146,18 @@ export function PlanDetail({ card }: { card: Card }) {
               flexShrink: 0,
             }}
           >
-            Sent to Codex
+            Sent to {agentLabel(app.agent)}
           </span>
         </div>
         <p style={{ margin: '4px 0 8px', fontSize: 12.5, color: 'var(--text-muted)', lineHeight: 1.5 }}>
-          This exact prompt is what Codex receives. Edit it before you dispatch.
+          This exact prompt is what {agentLabel(app.agent)} receives. Edit it before you dispatch.
         </p>
         <textarea
           value={card.prompt ?? ''}
           onChange={(e) => editPrompt(card.id, e.target.value)}
+          onFocus={() => {
+            if ((card.prompt ?? '') === EXAMPLE_PROMPT) editPrompt(card.id, '')
+          }}
           style={{
             width: '100%',
             minHeight: 188,
@@ -111,7 +168,7 @@ export function PlanDetail({ card }: { card: Card }) {
             fontFamily: 'var(--font-mono)',
             fontSize: 12.5,
             lineHeight: 1.65,
-            color: 'var(--text-strong)',
+            color: (card.prompt ?? '') === EXAMPLE_PROMPT ? 'var(--text-subtle)' : 'var(--text-strong)',
             background: 'var(--neutral-50)',
             outline: 'none',
           }}
@@ -143,10 +200,50 @@ export function PlanDetail({ card }: { card: Card }) {
         </span>
       </div>
 
+      {card.queued && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            padding: '11px 13px',
+            borderRadius: 'var(--radius-sm)',
+            background: 'var(--status-warning-surface, #FFF4E0)',
+            borderLeft: '3px solid var(--status-warning, #9A6700)',
+          }}
+        >
+          <span style={{ fontSize: 14 }}>⏳</span>
+          <span style={{ fontSize: 13, color: 'var(--text-body)', flex: 1 }}>
+            Queued — waiting for a free build slot (cap is {queue.concurrency}).
+          </span>
+          <Button variant="secondary" onClick={() => cancelQueued(card.id)} style={{ height: 32 }}>
+            Cancel
+          </Button>
+        </div>
+      )}
+
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 2 }}>
-        <Button variant="highlighter" onClick={() => startCard(card.id)}>
-          Start build →
-        </Button>
+        {card.status === 'ideas' ? (
+          <>
+            <Button variant="primary" onClick={closeCard}>
+              Save
+            </Button>
+            {live && (
+              <Button variant="secondary" onClick={() => decomposeCard(card.id)} style={{ color: 'var(--color-purple-dark)' }}>
+                ✂ Split into cards
+              </Button>
+            )}
+          </>
+        ) : card.queued ? null : (
+          <Button variant="highlighter" onClick={() => startCard(card.id)}>
+            {app.planFirst ? 'Plan & build →' : 'Start build →'}
+          </Button>
+        )}
+        {card.status !== 'ideas' && !card.queued && canRace && (
+          <Button variant="secondary" onClick={() => raceCard(card.id)} style={{ color: 'var(--color-purple-dark)' }}>
+            ⚔ Race agents
+          </Button>
+        )}
         <Button variant="secondary" onClick={closeCard}>
           Close
         </Button>

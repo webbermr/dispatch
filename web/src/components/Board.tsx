@@ -12,6 +12,8 @@ export function Board() {
   const cards = useStore((s) => s.cards)
   const backToPicker = useStore((s) => s.backToPicker)
   const newCard = useStore((s) => s.newCard)
+  const pullRepo = useStore((s) => s.pullRepo)
+  const live = useStore((s) => s.live)
   const [backHover, setBackHover] = useState(false)
 
   const app = apps.find((a) => a.id === appId)
@@ -58,19 +60,178 @@ export function Board() {
           <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-muted)' }}>{app.repo}</div>
         </div>
         <ClonePill cloned={app.cloned} />
+        {live && app.hasRemote && (
+          <Button variant="secondary" onClick={() => pullRepo(app.id)} style={{ height: 30, fontSize: 12.5 }}>
+            ↓ Pull
+          </Button>
+        )}
         <div style={{ flex: 1 }} />
-        {app.mergeStrategy && <MergeModeToggle appId={app.id} />}
+        {live && <QueueStatus appId={app.id} />}
+        <SettingsMenu appId={app.id} />
         <Button variant="secondary" onClick={newCard} style={{ height: 36, color: 'var(--brand-primary)' }}>
           + New card
         </Button>
       </div>
 
-      <div className="dp-scroll" style={{ overflowX: 'auto', padding: 22, display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+      <div className="dp-scroll" style={{ overflowX: 'auto', padding: 22, display: 'flex', gap: 16, alignItems: 'flex-start', justifyContent: 'safe center' }}>
         {COLS.map((col) => {
-          const list = appCards.filter((c) => c.status === col.key)
+          const list = appCards.filter((c) => c.status === col.key).sort((a, b) => (b.order ?? 0) - (a.order ?? 0))
           return <Column key={col.key} colKey={col.key} title={col.title} accent={col.accent} live={!!col.live && list.length > 0} empty={col.empty} cards={list} />
         })}
       </div>
+    </div>
+  )
+}
+
+const selectStyle = (warnColor: boolean) =>
+  ({
+    height: 30,
+    padding: '0 8px',
+    border: `1px solid ${warnColor ? 'var(--status-warning)' : 'var(--border-default)'}`,
+    borderRadius: 'var(--radius-sm)',
+    background: '#fff',
+    fontFamily: 'var(--font-heading)',
+    fontWeight: 700,
+    fontSize: 13,
+    color: 'var(--text-body)',
+    cursor: 'pointer',
+  }) as const
+
+const labelStyle = {
+  fontSize: 11.5,
+  color: 'var(--text-subtle)',
+  fontFamily: 'var(--font-heading)',
+  fontWeight: 700,
+  letterSpacing: '.04em',
+  textTransform: 'uppercase',
+} as const
+
+const AGENT_LABELS: Record<string, string> = { codex: 'Codex', claude: 'Claude Code' }
+
+function AgentToggle({ appId }: { appId: string }) {
+  const app = useStore((s) => s.apps.find((a) => a.id === appId))
+  const health = useStore((s) => s.health)
+  const setAppAgent = useStore((s) => s.setAppAgent)
+  if (!app) return null
+  const selected = app.agent ?? 'codex'
+  const known = health?.agents ?? [
+    { id: 'codex' as const, label: 'Codex', installed: true, version: null },
+    { id: 'claude' as const, label: 'Claude Code', installed: true, version: null },
+  ]
+  const installedSel = known.find((a) => a.id === selected)?.installed ?? true
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+      <span style={labelStyle}>Agent</span>
+      <select
+        value={selected}
+        onChange={(e) => setAppAgent(appId, e.target.value as 'codex' | 'claude')}
+        title="Which AI coding CLI builds cards in this repo"
+        style={selectStyle(!installedSel)}
+      >
+        {known.map((a) => (
+          <option key={a.id} value={a.id} disabled={!a.installed}>
+            {AGENT_LABELS[a.id] ?? a.label}
+            {a.installed ? '' : ' (not installed)'}
+          </option>
+        ))}
+      </select>
+      {!installedSel && (
+        <span title={`Install the ${AGENT_LABELS[selected]} CLI to use it.`} style={{ fontSize: 11.5, color: 'var(--status-warning)', whiteSpace: 'nowrap' }}>
+          ⚠ not installed
+        </span>
+      )}
+    </div>
+  )
+}
+
+function PreviewCommandField({ appId }: { appId: string }) {
+  const app = useStore((s) => s.apps.find((a) => a.id === appId))
+  const setAppPreviewCommand = useStore((s) => s.setAppPreviewCommand)
+  const [draft, setDraft] = useState(app?.previewCommand ?? '')
+  if (!app) return null
+  const saved = app.previewCommand ?? ''
+  const commit = () => {
+    const v = draft.trim()
+    if (v !== saved) setAppPreviewCommand(appId, v)
+  }
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+      <span style={labelStyle}>Preview</span>
+      <input
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+        }}
+        placeholder="auto-detect"
+        title="Command that starts a dev server for the Preview button (e.g. npm run dev, python manage.py runserver). Leave blank to auto-detect from package.json."
+        spellCheck={false}
+        style={{
+          height: 30,
+          width: 160,
+          padding: '0 9px',
+          border: '1px solid var(--border-default)',
+          borderRadius: 'var(--radius-sm)',
+          background: '#fff',
+          fontFamily: 'var(--font-mono)',
+          fontSize: 12,
+          color: 'var(--text-body)',
+          outline: 'none',
+        }}
+      />
+    </div>
+  )
+}
+
+function PlanFirstToggle({ appId }: { appId: string }) {
+  const app = useStore((s) => s.apps.find((a) => a.id === appId))
+  const setAppPlanFirst = useStore((s) => s.setAppPlanFirst)
+  if (!app) return null
+  const on = !!app.planFirst
+  return (
+    <button
+      onClick={() => setAppPlanFirst(appId, !on)}
+      title="Have the agent propose a plan to approve before it edits any code"
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 7,
+        height: 30,
+        padding: '0 11px',
+        border: `1px solid ${on ? 'var(--brand-primary)' : 'var(--border-default)'}`,
+        borderRadius: 'var(--radius-sm)',
+        background: on ? 'var(--brand-primary)' : '#fff',
+        color: on ? '#fff' : 'var(--text-body)',
+        cursor: 'pointer',
+        fontFamily: 'var(--font-heading)',
+        fontWeight: 700,
+        fontSize: 13,
+      }}
+    >
+      <span style={{ fontSize: 13 }}>📋</span>
+      Plan first{on ? ': on' : ''}
+    </button>
+  )
+}
+
+function BuildLocationToggle({ appId }: { appId: string }) {
+  const app = useStore((s) => s.apps.find((a) => a.id === appId))
+  const setAppBuildLocation = useStore((s) => s.setAppBuildLocation)
+  if (!app) return null
+  const where = app.buildLocation ?? 'worktree'
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+      <span style={labelStyle}>Build in</span>
+      <select
+        value={where}
+        onChange={(e) => setAppBuildLocation(appId, e.target.value as 'worktree' | 'workdir')}
+        title="Where Codex runs: an isolated copy, or your actual working folder"
+        style={selectStyle(false)}
+      >
+        <option value="worktree">Isolated copy</option>
+        <option value="workdir">My working copy</option>
+      </select>
     </div>
   )
 }
@@ -81,9 +242,11 @@ function MergeModeToggle({ appId }: { appId: string }) {
   const setAppMergeMode = useStore((s) => s.setAppMergeMode)
   if (!app) return null
   const mode = app.mergeStrategy ?? 'merge'
-  // Warn if PR mode can't actually open a PR yet.
-  const prBlocked = mode === 'pr' && (!app.hasRemote || (health ? !health.ghAuthed : false))
-  const warn = mode === 'pr' && !app.hasRemote ? 'no remote' : mode === 'pr' && health && !health.ghAuthed ? 'gh not authed' : null
+  // Warn if PR mode can't actually open a PR yet — forge-aware (gh vs glab).
+  const isGitlab = app.forge === 'gitlab'
+  const cliAuthed = health ? (isGitlab ? health.glabAuthed : health.ghAuthed) : true
+  const warn = mode === 'pr' && !app.hasRemote ? 'no remote' : mode === 'pr' && !cliAuthed ? `${isGitlab ? 'glab' : 'gh'} not authed` : null
+  const prBlocked = mode === 'pr' && (!app.hasRemote || !cliAuthed)
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
@@ -111,9 +274,169 @@ function MergeModeToggle({ appId }: { appId: string }) {
         <option value="merge">Merge locally</option>
       </select>
       {warn && (
-        <span title={warn === 'no remote' ? 'This repo has no git remote — add one to open PRs.' : "Run 'gh auth login' to open PRs."} style={{ fontSize: 11.5, color: 'var(--status-warning)', whiteSpace: 'nowrap' }}>
+        <span
+          title={warn === 'no remote' ? 'This repo has no git remote — add one to open PRs.' : `Run '${isGitlab ? 'glab' : 'gh'} auth login' to open ${isGitlab ? 'MRs' : 'PRs'}.`}
+          style={{ fontSize: 11.5, color: 'var(--status-warning)', whiteSpace: 'nowrap' }}
+        >
           ⚠ {warn}
         </span>
+      )}
+    </div>
+  )
+}
+
+function AutoRetryToggle({ appId }: { appId: string }) {
+  const app = useStore((s) => s.apps.find((a) => a.id === appId))
+  const setAppAutoRetry = useStore((s) => s.setAppAutoRetry)
+  if (!app) return null
+  const on = !!app.autoRetry
+  return (
+    <button
+      onClick={() => setAppAutoRetry(appId, !on)}
+      title="If a build fails, automatically retry once — with the other agent if installed, else a refined prompt"
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 7,
+        height: 30,
+        padding: '0 11px',
+        border: `1px solid ${on ? 'var(--brand-primary)' : 'var(--border-default)'}`,
+        borderRadius: 'var(--radius-sm)',
+        background: on ? 'var(--brand-primary)' : '#fff',
+        color: on ? '#fff' : 'var(--text-body)',
+        cursor: 'pointer',
+        fontFamily: 'var(--font-heading)',
+        fontWeight: 700,
+        fontSize: 13,
+      }}
+    >
+      <span style={{ fontSize: 13 }}>↻</span>
+      Auto-retry{on ? ': on' : ''}
+    </button>
+  )
+}
+
+/** Live build-queue chip + bulk "Build all Ready" action. */
+function QueueStatus({ appId }: { appId: string }) {
+  const queue = useStore((s) => s.queue)
+  const readyCount = useStore((s) => s.cards.filter((c) => c.appId === appId && c.status === 'ready' && !c.queued).length)
+  const buildAllReady = useStore((s) => s.buildAllReady)
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <span
+        title={`Up to ${queue.concurrency} builds run at once. ${queue.active} running, ${queue.queued} queued.`}
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 6,
+          height: 30,
+          padding: '0 10px',
+          borderRadius: 'var(--radius-pill)',
+          border: '1px solid var(--border-subtle)',
+          background: 'var(--neutral-50)',
+          fontFamily: 'var(--font-mono)',
+          fontSize: 12,
+          color: 'var(--text-muted)',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        <span style={{ width: 7, height: 7, borderRadius: '50%', background: queue.active > 0 ? 'var(--status-success)' : 'var(--neutral-300)' }} />
+        {queue.active}/{queue.concurrency} running{queue.queued > 0 ? ` · ${queue.queued} queued` : ''}
+      </span>
+      {readyCount > 0 && (
+        <Button variant="secondary" onClick={buildAllReady} style={{ height: 30, fontSize: 12.5, color: 'var(--brand-primary)' }}>
+          ⚡ Build all ({readyCount})
+        </Button>
+      )}
+    </div>
+  )
+}
+
+/** A popover housing the per-repo build settings (keeps the header uncluttered). */
+function SettingsMenu({ appId }: { appId: string }) {
+  const app = useStore((s) => s.apps.find((a) => a.id === appId))
+  const live = useStore((s) => s.live)
+  const generateAgentsMd = useStore((s) => s.generateAgentsMd)
+  const [open, setOpen] = useState(false)
+  if (!app) return null
+  return (
+    <div style={{ position: 'relative' }}>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        title="Repo build settings"
+        style={{
+          height: 36,
+          padding: '0 12px',
+          border: `1px solid ${open ? 'var(--brand-primary)' : 'var(--border-default)'}`,
+          borderRadius: 'var(--radius-sm)',
+          background: '#fff',
+          cursor: 'pointer',
+          fontFamily: 'var(--font-heading)',
+          fontWeight: 700,
+          fontSize: 13,
+          color: 'var(--text-body)',
+        }}
+      >
+        ⚙ Settings
+      </button>
+      {open && (
+        <>
+          <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
+          <div
+            style={{
+              position: 'absolute',
+              top: 42,
+              right: 0,
+              zIndex: 41,
+              width: 280,
+              background: '#fff',
+              border: '1px solid var(--border-default)',
+              borderRadius: 'var(--radius-md)',
+              boxShadow: 'var(--shadow-lg, 0 12px 32px rgba(0,0,0,.16))',
+              padding: 16,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'flex-start',
+              gap: 14,
+            }}
+          >
+            {app.agent && <AgentToggle appId={appId} />}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              <PlanFirstToggle appId={appId} />
+              <AutoRetryToggle appId={appId} />
+            </div>
+            {app.buildLocation && <BuildLocationToggle appId={appId} />}
+            {app.mergeStrategy && <MergeModeToggle appId={appId} />}
+            {live && <PreviewCommandField appId={appId} key={appId} />}
+            {live && (
+              <div style={{ width: '100%', borderTop: '1px solid var(--border-subtle)', paddingTop: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <span style={labelStyle}>Repo setup</span>
+                <button
+                  onClick={() => {
+                    setOpen(false)
+                    generateAgentsMd(appId)
+                  }}
+                  title="Scan the repo and write an AGENTS.md the coding agent will use as context"
+                  style={{
+                    height: 32,
+                    padding: '0 11px',
+                    border: '1px solid var(--border-default)',
+                    borderRadius: 'var(--radius-sm)',
+                    background: '#fff',
+                    cursor: 'pointer',
+                    fontFamily: 'var(--font-heading)',
+                    fontWeight: 700,
+                    fontSize: 13,
+                    color: 'var(--brand-primary)',
+                    textAlign: 'left',
+                  }}
+                >
+                  📝 Generate AGENTS.md
+                </button>
+              </div>
+            )}
+          </div>
+        </>
       )}
     </div>
   )
@@ -128,16 +451,45 @@ interface ColumnProps {
   cards: import('../store/types').Card[]
 }
 
+function NewCardTile() {
+  const newCard = useStore((s) => s.newCard)
+  const [hover, setHover] = useState(false)
+  return (
+    <button
+      onClick={newCard}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        padding: '16px 12px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 6,
+        fontFamily: 'var(--font-heading)',
+        fontWeight: 700,
+        fontSize: 13,
+        cursor: 'pointer',
+        border: `1px dashed ${hover ? 'var(--brand-primary)' : 'var(--border-default)'}`,
+        borderRadius: 'var(--radius-sm)',
+        background: hover ? '#fff' : 'rgba(255,255,255,.4)',
+        color: 'var(--brand-primary)',
+        transition: 'background var(--duration-fast), border-color var(--duration-fast)',
+      }}
+    >
+      + New card
+    </button>
+  )
+}
+
 function Column({ colKey, title, accent, live, empty, cards }: ColumnProps) {
-  const moveCard = useStore((s) => s.moveCard)
-  const draggingId = useStore((s) => s.draggingId)
+  const dropOnColumn = useStore((s) => s.dropOnColumn)
 
   return (
     <section
       onDragOver={(e) => e.preventDefault()}
       onDrop={(e) => {
         e.preventDefault()
-        moveCard(draggingId, colKey)
+        dropOnColumn(e.dataTransfer.getData('text/dispatch-card'), colKey)
       }}
       style={{
         width: 304,
@@ -205,10 +557,12 @@ function Column({ colKey, title, accent, live, empty, cards }: ColumnProps) {
         )}
       </header>
       <div style={{ padding: '0 11px 12px', display: 'flex', flexDirection: 'column', gap: 11, overflowY: 'auto' }}>
+        {/* Ideas always shows a "+ New card" tile at the top (in place of the empty hint). */}
+        {colKey === 'ideas' && <NewCardTile />}
         {cards.map((c) => (
           <Card key={c.id} card={c} />
         ))}
-        {cards.length === 0 && (
+        {cards.length === 0 && colKey !== 'ideas' && (
           <div
             style={{
               padding: '18px 12px',

@@ -93,6 +93,51 @@ export function clone(slug: string, dest: string, onLine: (line: string) => void
   })
 }
 
+/**
+ * Clone any git URL (https/ssh, GitHub/GitLab/other) into `dest`, streaming
+ * progress. Never prompts for credentials (so it fails fast instead of hanging).
+ */
+export function cloneUrl(url: string, dest: string, onLine: (line: string) => void, timeoutMs = 180000): Promise<number> {
+  return new Promise((resolve) => {
+    onLine(`$ git clone ${url} ${dest}`)
+    const child = spawn('git', ['clone', '--progress', url, dest], {
+      shell: false,
+      env: { ...process.env, GIT_TERMINAL_PROMPT: '0', GIT_SSH_COMMAND: 'ssh -oBatchMode=yes -oStrictHostKeyChecking=accept-new -oConnectTimeout=12' },
+    })
+    const timer = setTimeout(() => {
+      onLine('clone timed out')
+      child.kill('SIGTERM')
+    }, timeoutMs)
+    const forward = (buf: Buffer) =>
+      buf
+        .toString()
+        .split(/\r?\n|\r/)
+        .filter((l) => l.trim())
+        .forEach(onLine)
+    child.stdout.on('data', forward)
+    child.stderr.on('data', forward)
+    child.on('error', (err) => {
+      clearTimeout(timer)
+      onLine(`error: ${String(err)}`)
+      resolve(-1)
+    })
+    child.on('close', (code) => {
+      clearTimeout(timer)
+      onLine(code === 0 ? '✓ clone complete' : `clone exited with code ${code}`)
+      resolve(code ?? -1)
+    })
+  })
+}
+
+/** Normalize a user-entered repo into a clone URL + the folder name it implies. */
+export function parseCloneTarget(input: string): { url: string; name: string } {
+  let url = input.trim().replace(/\/+$/, '')
+  // `owner/name` shorthand → GitHub https.
+  if (/^[\w.-]+\/[\w.-]+$/.test(url)) url = `https://github.com/${url}`
+  const name = (url.replace(/\.git$/, '').match(/([^/:]+)$/)?.[1] || 'repo').trim()
+  return { url, name }
+}
+
 export async function hasCommits(path: string): Promise<boolean> {
   return (await git(['rev-parse', '--verify', '--quiet', 'HEAD'], path)).code === 0
 }
@@ -132,6 +177,16 @@ export async function defaultBranchOf(path: string): Promise<string> {
 export async function branchExists(path: string, branch: string): Promise<boolean> {
   const r = await git(['rev-parse', '--verify', '--quiet', `refs/heads/${branch}`], path)
   return r.code === 0
+}
+
+/** Local branch names, excluding Dispatch's own `feat/…|fix/…|enh/…` build branches. */
+export async function listBranches(path: string): Promise<string[]> {
+  const r = await git(['branch', '--format=%(refname:short)'], path)
+  if (r.code !== 0) return []
+  return r.stdout
+    .split('\n')
+    .map((b) => b.trim())
+    .filter((b) => b && !/^(feat|fix|enh)\//.test(b))
 }
 
 /**

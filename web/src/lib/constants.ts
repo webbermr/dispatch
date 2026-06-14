@@ -1,4 +1,22 @@
-import type { CardStatus, CardType, Priority } from '../store/types'
+import type { CardStatus, CardType, CodingAgentId, Priority } from '../store/types'
+
+export const AGENT_LABELS: Record<CodingAgentId, string> = { codex: 'Codex', claude: 'Claude Code' }
+
+/** Example placeholders for a new card. Shown prefilled; cleared when the user
+ *  focuses the field (treated as examples, not real content). */
+export const EXAMPLE_DESC = 'e.g. Add a dark-mode toggle to Settings that follows the OS theme.'
+export const EXAMPLE_PROMPT = [
+  'e.g. Add a dark-mode toggle to the Settings screen.',
+  '',
+  '- Add a toggle (System / Light / Dark) in Settings.',
+  '- Persist the choice and apply it across the app.',
+  '- Default to following the OS appearance.',
+  '- Keep text legible on dark backgrounds.',
+].join('\n')
+
+export function agentLabel(id: CodingAgentId | undefined): string {
+  return id ? AGENT_LABELS[id] ?? id : 'Codex'
+}
 
 export interface TypeStyle {
   label: string
@@ -20,7 +38,7 @@ export interface PriorityStyle {
 
 export const PRI: Record<Priority, PriorityStyle> = {
   high: { label: 'High', color: 'var(--status-danger)' },
-  med: { label: 'Medium', color: 'var(--status-warning)' },
+  med: { label: 'Medium', color: 'var(--color-orange-light)' },
   low: { label: 'Low', color: 'var(--neutral-500)' },
 }
 

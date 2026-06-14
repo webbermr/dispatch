@@ -72,12 +72,24 @@ function DiagnosisPanel({ d }: { d: RepoDiagnosis }) {
   )
 }
 
+/** Derive the folder name a repo URL will clone into (mirrors the agent). */
+function repoNameFromUrl(u: string): string {
+  let s = u.trim().replace(/\/+$/, '')
+  if (!s) return ''
+  if (/^[\w.-]+\/[\w.-]+$/.test(s)) s = `https://github.com/${s}`
+  return s.replace(/\.git$/, '').match(/([^/:]+)$/)?.[1] ?? 'repo'
+}
+
 export function AddAppModal() {
   const addAppOpen = useStore((s) => s.addAppOpen)
   const closeAddApp = useStore((s) => s.closeAddApp)
   const addApp = useStore((s) => s.addApp)
+  const cloneAndAddApp = useStore((s) => s.cloneAndAddApp)
+  const [mode, setMode] = useState<'local' | 'clone'>('local')
   const [path, setPath] = useState('')
   const [name, setName] = useState('')
+  const [repoUrl, setRepoUrl] = useState('')
+  const [parentDir, setParentDir] = useState('~/code')
   const [busy, setBusy] = useState(false)
   const [checking, setChecking] = useState(false)
   const [diag, setDiag] = useState<RepoDiagnosis | null>(null)
@@ -99,17 +111,49 @@ export function AddAppModal() {
     setChecking(false)
   }
 
+  const reset = () => {
+    setPath('')
+    setName('')
+    setRepoUrl('')
+    setDiag(null)
+  }
+
   const submit = async () => {
     if (!path.trim() || busy) return
     setBusy(true)
     const id = await addApp(path, name)
     setBusy(false)
-    if (id) {
-      setPath('')
-      setName('')
-      setDiag(null)
-    }
+    if (id) reset()
   }
+
+  const submitClone = async () => {
+    if (!repoUrl.trim() || !parentDir.trim() || busy) return
+    setBusy(true)
+    const id = await cloneAndAddApp(repoUrl, parentDir, name)
+    setBusy(false)
+    if (id) reset()
+  }
+
+  const finalPath = mode === 'clone' && repoUrl.trim() ? `${parentDir.trim().replace(/\/$/, '')}/${repoNameFromUrl(repoUrl)}` : ''
+  const tab = (key: 'local' | 'clone', label: string) => (
+    <button
+      onClick={() => setMode(key)}
+      style={{
+        flex: 1,
+        height: 34,
+        border: 'none',
+        borderBottom: `2px solid ${mode === key ? 'var(--brand-primary)' : 'transparent'}`,
+        background: 'none',
+        cursor: 'pointer',
+        fontFamily: 'var(--font-heading)',
+        fontWeight: 700,
+        fontSize: 13,
+        color: mode === key ? 'var(--brand-primary)' : 'var(--text-muted)',
+      }}
+    >
+      {label}
+    </button>
+  )
 
   return (
     <div
@@ -125,37 +169,80 @@ export function AddAppModal() {
             <div style={{ width: 38, height: 38, borderRadius: 'var(--radius-sm)', background: '#E1EEF6', color: 'var(--brand-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>+</div>
             <h3 style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 19, margin: 0, color: 'var(--text-strong)' }}>Add a repo</h3>
           </div>
-          <p style={{ fontSize: 14, lineHeight: 1.55, color: 'var(--text-body)', margin: '0 0 16px' }}>
-            Point Dispatch at a git repo that's already cloned on this machine. Use <strong>Check</strong> to confirm it can build, commit, and push.
-          </p>
 
-          <label style={labelStyle}>Local path</label>
-          <input
-            autoFocus
-            value={path}
-            onChange={(e) => onPathChange(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && check()}
-            placeholder="/Users/you/code/my-repo"
-            style={{ ...inputStyle, fontFamily: 'var(--font-mono)', fontSize: 12.5, marginBottom: 14 }}
-          />
-
-          <label style={labelStyle}>Name (optional)</label>
-          <input value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && submit()} placeholder="Defaults to the folder name" style={inputStyle} />
-
-          <div style={{ marginTop: 14 }}>
-            <Button variant="secondary" onClick={check} disabled={!path.trim() || checking} style={{ height: 34, fontSize: 13 }}>
-              {checking ? 'Checking…' : 'Check connection'}
-            </Button>
+          <div style={{ display: 'flex', borderBottom: '1px solid var(--border-subtle)', marginBottom: 16 }}>
+            {tab('local', 'I have it locally')}
+            {tab('clone', 'Clone from URL')}
           </div>
-          {diag && <DiagnosisPanel d={diag} />}
+
+          {mode === 'local' ? (
+            <>
+              <p style={{ fontSize: 14, lineHeight: 1.55, color: 'var(--text-body)', margin: '0 0 16px' }}>
+                Point Dispatch at a git repo that's already cloned on this machine. Use <strong>Check</strong> to confirm it can build, commit, and push.
+              </p>
+              <label style={labelStyle}>Local path</label>
+              <input
+                autoFocus
+                value={path}
+                onChange={(e) => onPathChange(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && check()}
+                placeholder="/Users/you/code/my-repo"
+                style={{ ...inputStyle, fontFamily: 'var(--font-mono)', fontSize: 12.5, marginBottom: 14 }}
+              />
+              <label style={labelStyle}>Name (optional)</label>
+              <input value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && submit()} placeholder="Defaults to the folder name" style={inputStyle} />
+              <div style={{ marginTop: 14 }}>
+                <Button variant="secondary" onClick={check} disabled={!path.trim() || checking} style={{ height: 34, fontSize: 13 }}>
+                  {checking ? 'Checking…' : 'Check connection'}
+                </Button>
+              </div>
+              {diag && <DiagnosisPanel d={diag} />}
+            </>
+          ) : (
+            <>
+              <p style={{ fontSize: 14, lineHeight: 1.55, color: 'var(--text-body)', margin: '0 0 16px' }}>
+                Don't have it locally? Paste a repo URL and Dispatch will clone it for you. Uses your existing git credentials (SSH key or <code style={{ fontFamily: 'var(--font-mono)', fontSize: 12.5 }}>gh</code> auth) — no passwords are stored.
+              </p>
+              <label style={labelStyle}>Repo URL</label>
+              <input
+                autoFocus
+                value={repoUrl}
+                onChange={(e) => setRepoUrl(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && submitClone()}
+                placeholder="https://github.com/owner/name  ·  git@github.com:owner/name.git  ·  owner/name"
+                style={{ ...inputStyle, fontFamily: 'var(--font-mono)', fontSize: 12.5, marginBottom: 14 }}
+              />
+              <label style={labelStyle}>Clone into (folder)</label>
+              <input
+                value={parentDir}
+                onChange={(e) => setParentDir(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && submitClone()}
+                placeholder="~/code"
+                style={{ ...inputStyle, fontFamily: 'var(--font-mono)', fontSize: 12.5, marginBottom: finalPath ? 8 : 14 }}
+              />
+              {finalPath && (
+                <div style={{ fontSize: 12.5, color: 'var(--text-muted)', marginBottom: 14 }}>
+                  → clones to <code style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-strong)' }}>{finalPath}</code>
+                </div>
+              )}
+              <label style={labelStyle}>Name (optional)</label>
+              <input value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && submitClone()} placeholder="Defaults to the repo name" style={inputStyle} />
+            </>
+          )}
         </div>
         <div style={{ padding: '14px 24px', background: 'var(--neutral-50)', borderTop: '1px solid var(--border-subtle)', display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
           <Button variant="secondary" onClick={closeAddApp} style={{ height: 38 }}>
             Cancel
           </Button>
-          <Button variant="primary" onClick={submit} disabled={busy || !path.trim() || diag?.level === 'error'} style={{ height: 38 }}>
-            {busy ? 'Adding…' : 'Add repo'}
-          </Button>
+          {mode === 'local' ? (
+            <Button variant="primary" onClick={submit} disabled={busy || !path.trim() || diag?.level === 'error'} style={{ height: 38 }}>
+              {busy ? 'Adding…' : 'Add repo'}
+            </Button>
+          ) : (
+            <Button variant="primary" onClick={submitClone} disabled={busy || !repoUrl.trim() || !parentDir.trim()} style={{ height: 38 }}>
+              {busy ? 'Cloning…' : 'Clone & add'}
+            </Button>
+          )}
         </div>
       </div>
     </div>
