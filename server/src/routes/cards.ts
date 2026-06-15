@@ -2,7 +2,7 @@ import { Router } from 'express'
 import { currentUser, isAccessError, repoAccess, requireAuth } from '../auth/access.js'
 import { bus } from '../bus.js'
 import { id } from '../ids.js'
-import { dispatchCard } from '../runners.js'
+import { approveRun, dispatchCard } from '../runners.js'
 import { store } from '../store/jsonStore.js'
 import type { CardStatus, CardType, Priority } from '../store/types.js'
 
@@ -93,6 +93,19 @@ export function cardsRouter(): Router {
     if (isAccessError(a)) return res.status(a.status).json({ error: a.error })
     try {
       res.status(201).json(dispatchCard(card, a.repo, user))
+    } catch (err) {
+      res.status((err as { status?: number }).status ?? 400).json({ error: (err as Error).message })
+    }
+  })
+
+  // Approve a reviewed card → commit + merge / open PR on the builder's machine.
+  r.post('/cards/:id/approve', (req, res) => {
+    const card = store.cards.byId(req.params.id)
+    if (!card) return res.status(404).json({ error: 'unknown card' })
+    const a = repoAccess(currentUser(res).id, card.repoId, 'builder')
+    if (isAccessError(a)) return res.status(a.status).json({ error: a.error })
+    try {
+      res.json(approveRun(card, a.repo))
     } catch (err) {
       res.status((err as { status?: number }).status ?? 400).json({ error: (err as Error).message })
     }

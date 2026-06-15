@@ -94,8 +94,21 @@ export function dispatchCard(card: Card, repo: Repo, user: User): Run {
   return run
 }
 
+/** Approve a reviewed card: tell the machine that built it to commit + merge / open a PR. */
+export function approveRun(card: Card, repo: Repo): Run {
+  if (!card.runId) throw Object.assign(new Error('this card has no build to approve'), { status: 400 })
+  const run = store.runs.byId(card.runId)
+  if (!run || run.status !== 'needs_review') throw Object.assign(new Error('this card is not awaiting review'), { status: 400 })
+  // Route to the runner owned by whoever built it (their machine has the worktree + creds).
+  const runner = runners.findForDispatch(repo.workspaceId, run.userId, repo.repoSlug)
+  if (!runner) throw Object.assign(new Error('the machine that built this card is offline — its owner must reconnect their runner'), { status: 409 })
+  const strategy = repo.repoMode === 'local' || repo.settings?.mergeStrategy === 'merge' ? 'merge' : 'pr'
+  runner.send({ type: 'approve', runId: run.id, strategy, defaultBranch: repo.defaultBranch, title: card.title })
+  return run
+}
+
 interface RunnerEvent {
-  kind: 'status' | 'progress' | 'step' | 'log' | 'diff' | 'message' | 'branch' | 'error'
+  kind: 'status' | 'progress' | 'step' | 'log' | 'diff' | 'message' | 'branch' | 'prUrl' | 'error'
   status?: RunStatus
   pct?: number
   step?: string
@@ -104,6 +117,7 @@ interface RunnerEvent {
   files?: Run['diff']
   text?: string
   branch?: string
+  prUrl?: string
   error?: string
 }
 
@@ -144,6 +158,9 @@ export function ingestRunnerEvent(runId: string, ev: RunnerEvent): void {
     case 'branch':
       if (ev.branch) patch.branch = ev.branch
       break
+    case 'prUrl':
+      if (ev.prUrl) patch.prUrl = ev.prUrl
+      break
     case 'error':
       if (ev.error) patch.error = ev.error
       break
@@ -158,7 +175,7 @@ export function ingestRunnerEvent(runId: string, ev: RunnerEvent): void {
       bus.publish({ type: 'card.update', repoId: run.repoId, card: store.cards.byId(card.id)! })
     }
   }
-  if (ev.kind === 'status' || ev.kind === 'progress' || ev.kind === 'branch') emitRun(updated)
+  if (ev.kind === 'status' || ev.kind === 'progress' || ev.kind === 'branch' || ev.kind === 'prUrl') emitRun(updated)
 }
 
 /** Mark a runner's in-flight runs interrupted when it disconnects. */

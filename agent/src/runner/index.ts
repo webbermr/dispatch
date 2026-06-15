@@ -4,9 +4,25 @@ import { WebSocket } from 'ws'
 import { loadConfig, WORKTREES_DIR } from '../config.js'
 import { getAgent, probeAgents } from '../lib/agentRegistry.js'
 import { parseUnifiedDiff } from '../lib/diff.js'
-import { addWorktree, branchExists, captureDiff, resolveBaseBranch } from '../lib/git.js'
+import { addWorktree, branchExists, captureDiff, commitAll, getRemoteUrl, hasStagedOrUnstagedChanges, removeWorktree, resolveBaseBranch, run as execCmd } from '../lib/git.js'
+import { createPullRequest, forgeOfUrl, forgeReady } from '../lib/forge.js'
 import { log } from '../lib/log.js'
 import type { CardType, CodingAgentId } from '../types.js'
+
+interface BuiltRun {
+  localPath: string
+  worktreePath: string
+  branch: string
+  baseBranch: string
+  title?: string
+}
+
+interface ApproveMsg {
+  runId: string
+  strategy: 'pr' | 'merge'
+  defaultBranch: string
+  title?: string
+}
 
 interface Job {
   runId: string
@@ -31,6 +47,7 @@ export function startRunner(serverUrl: string, token: string): void {
   const wsUrl = `${serverUrl.replace(/\/$/, '').replace(/^http/, 'ws')}/runner?token=${encodeURIComponent(token)}`
   let ws: WebSocket | null = null
   const active = new Set<string>()
+  const built = new Map<string, BuiltRun>() // runId → worktree context for approve
 
   const connect = () => {
     log.info('runner connecting to', serverUrl)
@@ -51,6 +68,7 @@ export function startRunner(serverUrl: string, token: string): void {
         return
       }
       if (msg.type === 'job' && msg.runId && msg.repoSlug) void runJob(msg as Job)
+      else if (msg.type === 'approve' && msg.runId) void approveJob(msg as unknown as ApproveMsg)
     })
 
     ws.on('close', () => {
@@ -107,6 +125,7 @@ export function startRunner(serverUrl: string, token: string): void {
             if (last?.trim()) emit(job.runId, { kind: 'message', text: last.trim() })
             emit(job.runId, { kind: 'step', step: 'pr', state: 'done' })
             emit(job.runId, { kind: 'progress', pct: 100 })
+            built.set(job.runId, { localPath: app.localPath, worktreePath, branch, baseBranch, title: job.title })
             emit(job.runId, { kind: 'status', status: 'needs_review' })
             active.delete(job.runId)
           },
@@ -116,6 +135,45 @@ export function startRunner(serverUrl: string, token: string): void {
       emit(job.runId, { kind: 'error', error: (err as Error).message })
       emit(job.runId, { kind: 'status', status: 'failed' })
       active.delete(job.runId)
+    }
+  }
+
+  const approveJob = async (msg: ApproveMsg) => {
+    const ctx = built.get(msg.runId)
+    if (!ctx) {
+      emit(msg.runId, { kind: 'error', error: 'this build is no longer on this machine — rebuild it, then approve' })
+      return
+    }
+    try {
+      if (await hasStagedOrUnstagedChanges(ctx.worktreePath)) await commitAll(ctx.worktreePath, msg.title || ctx.title || ctx.branch)
+      if (msg.strategy === 'pr') {
+        const remoteUrl = await getRemoteUrl(ctx.localPath)
+        if (!remoteUrl) throw new Error('no git remote — switch this repo to Local (merge), or add a remote')
+        const forge = forgeOfUrl(remoteUrl)
+        const ready = await forgeReady(forge)
+        if (!ready.ok) throw new Error(ready.reason)
+        const base = msg.defaultBranch && msg.defaultBranch !== 'HEAD' ? msg.defaultBranch : 'main'
+        // Push the base if the remote doesn't have it yet (fresh repos).
+        if (!(await execCmd('git', ['ls-remote', '--heads', 'origin', base], { cwd: ctx.localPath })).stdout.trim()) {
+          await execCmd('git', ['push', 'origin', base], { cwd: ctx.localPath })
+        }
+        const push = await execCmd('git', ['push', '-u', 'origin', ctx.branch], { cwd: ctx.worktreePath })
+        if (push.code !== 0) throw new Error(`git push failed: ${push.stderr.trim().split('\n').slice(-2).join(' ')}`)
+        const pr = await createPullRequest(forge, ctx.worktreePath, ctx.branch, base)
+        if (!pr.ok) throw new Error(`branch pushed, but opening the PR failed: ${pr.error}`)
+        emit(msg.runId, { kind: 'branch', branch: ctx.branch })
+        emit(msg.runId, { kind: 'prUrl', prUrl: pr.url })
+      } else {
+        const co = await execCmd('git', ['checkout', msg.defaultBranch], { cwd: ctx.localPath })
+        if (co.code !== 0) throw new Error(`could not checkout ${msg.defaultBranch}: ${co.stderr.trim()}`)
+        const merge = await execCmd('git', ['merge', '--ff-only', ctx.branch], { cwd: ctx.localPath })
+        if (merge.code !== 0) throw new Error(`fast-forward merge failed: ${merge.stderr.trim().split('\n').slice(-2).join(' ')}`)
+      }
+      await removeWorktree(ctx.localPath, ctx.worktreePath)
+      built.delete(msg.runId)
+      emit(msg.runId, { kind: 'status', status: 'merged' })
+    } catch (err) {
+      emit(msg.runId, { kind: 'error', error: (err as Error).message })
     }
   }
 

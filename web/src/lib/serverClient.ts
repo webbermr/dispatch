@@ -165,6 +165,9 @@ export class ServerClient {
   dispatch(cardId: string): Promise<SRun> {
     return this.req(`/cards/${cardId}/dispatch`, { method: 'POST' })
   }
+  approve(cardId: string): Promise<SRun> {
+    return this.req(`/cards/${cardId}/approve`, { method: 'POST' })
+  }
   getRun(runId: string): Promise<SRun> {
     return this.req(`/runs/${runId}`)
   }

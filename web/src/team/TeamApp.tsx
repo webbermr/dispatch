@@ -199,6 +199,7 @@ function Board({ repo, setError }: { repo: SRepo; setError: (s: string) => void 
   }, [repo.id, upsert, setError])
 
   const build = (card: SCard) => server.dispatch(card.id).catch((e) => setError((e as Error).message))
+  const approve = (card: SCard) => server.approve(card.id).catch((e) => setError((e as Error).message))
   const toggleDiff = (card: SCard) => {
     if (diffs[card.id]) return setDiffs((d) => { const n = { ...d }; delete n[card.id]; return n })
     if (!card.runId) return
@@ -252,8 +253,14 @@ function Board({ repo, setError }: { repo: SRepo; setError: (s: string) => void 
                       {(c.status === 'ideas' || c.status === 'ready') && (
                         <button onClick={() => build(c)} title="Build on your machine" style={{ height: 26, padding: '0 9px', border: '1px solid var(--brand-primary)', background: '#fff', color: 'var(--brand-primary)', borderRadius: 'var(--radius-xs)', cursor: 'pointer', fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 11.5 }}>▶ Build</button>
                       )}
+                      {c.status === 'review' && (
+                        <button onClick={() => approve(c)} title="Commit + merge / open a PR on the build machine" style={{ height: 26, padding: '0 9px', border: '1px solid var(--status-success)', background: 'var(--status-success)', color: '#fff', borderRadius: 'var(--radius-xs)', cursor: 'pointer', fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 11.5 }}>✓ Approve</button>
+                      )}
                       {(c.status === 'review' || c.status === 'merged') && c.runId && (
                         <button onClick={() => toggleDiff(c)} style={{ height: 26, padding: '0 9px', border: '1px solid var(--border-default)', background: '#fff', color: 'var(--text-body)', borderRadius: 'var(--radius-xs)', cursor: 'pointer', fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 11.5 }}>{diff ? 'Hide diff' : 'View diff'}</button>
+                      )}
+                      {c.status === 'merged' && run?.prUrl && (
+                        <a href={run.prUrl} target="_blank" rel="noreferrer" style={{ height: 26, display: 'inline-flex', alignItems: 'center', padding: '0 9px', border: '1px solid var(--border-default)', background: '#fff', color: 'var(--brand-primary)', borderRadius: 'var(--radius-xs)', textDecoration: 'none', fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 11.5 }}>PR ↗</a>
                       )}
                       <select value={c.status} onChange={(e) => move(c, e.target.value as CardStatus)} style={{ flex: 1, height: 26, fontSize: 11.5, border: '1px solid var(--border-default)', borderRadius: 'var(--radius-xs)', background: '#fff' }}>
                         {COLS.map((x) => (<option key={x.key} value={x.key}>{x.title}</option>))}
