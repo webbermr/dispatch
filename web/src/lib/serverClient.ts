@@ -21,6 +21,8 @@ export interface SCard {
   title: string
   desc: string
   prompt: string
+  base?: string
+  model?: string
   order: number
   scaffold?: boolean
   assigneeUserId?: string

@@ -1,25 +1,18 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { server, type SCard, type SRepo, type SRunSummary, type SRun, type SUser, type SWorkspace, type CardStatus } from '../lib/serverClient'
+import { useEffect, useState } from 'react'
+import { server, type SRepo, type SUser, type SWorkspace } from '../lib/serverClient'
 import { RepoModePill } from '../components/AppPicker'
-
-const COLS: { key: CardStatus; title: string }[] = [
-  { key: 'ideas', title: 'Ideas' },
-  { key: 'ready', title: 'Ready' },
-  { key: 'building', title: 'Building' },
-  { key: 'review', title: 'Review' },
-  { key: 'merged', title: 'Merged' },
-]
+import { useStore } from '../store/useStore'
 
 const input = { height: 36, padding: '0 11px', border: '1px solid var(--border-default)', borderRadius: 'var(--radius-sm)', fontSize: 13.5, background: '#fff', outline: 'none' } as const
 const btn = { height: 36, padding: '0 14px', border: '1px solid var(--brand-primary)', borderRadius: 'var(--radius-sm)', background: 'var(--brand-primary)', color: '#fff', cursor: 'pointer', fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 13.5 } as const
 const btnGhost = { ...btn, background: '#fff', color: 'var(--brand-primary)' } as const
 
 export function TeamApp() {
+  const openTeamRepo = useStore((s) => s.openTeamRepo)
   const [user, setUser] = useState<SUser | null>(null)
   const [ws, setWs] = useState<SWorkspace[]>([])
   const [activeWs, setActiveWs] = useState<SWorkspace | null>(null)
   const [repos, setRepos] = useState<SRepo[]>([])
-  const [activeRepo, setActiveRepo] = useState<SRepo | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   // Resume an existing session.
@@ -37,7 +30,6 @@ export function TeamApp() {
 
   const openWorkspace = (w: SWorkspace) => {
     setActiveWs(w)
-    setActiveRepo(null)
     server.listRepos(w.id).then((r) => setRepos(r.repos)).catch((e) => setError((e as Error).message))
   }
 
@@ -46,12 +38,11 @@ export function TeamApp() {
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       <header style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 22px', borderBottom: '1px solid var(--border-subtle)', background: '#fff' }}>
-        <button onClick={() => { setActiveWs(null); setActiveRepo(null) }} style={crumb(!activeWs)}>Workspaces</button>
-        {activeWs && (<><span style={{ color: 'var(--text-subtle)' }}>›</span><button onClick={() => setActiveRepo(null)} style={crumb(!activeRepo)}>{activeWs.name}</button></>)}
-        {activeRepo && (<><span style={{ color: 'var(--text-subtle)' }}>›</span><span style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 14, color: 'var(--text-strong)' }}>{activeRepo.name}</span></>)}
+        <button onClick={() => setActiveWs(null)} style={crumb(!activeWs)}>Workspaces</button>
+        {activeWs && (<><span style={{ color: 'var(--text-subtle)' }}>›</span><span style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 14, color: 'var(--text-strong)' }}>{activeWs.name}</span></>)}
         <div style={{ flex: 1 }} />
         <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>{user.name}</span>
-        <button onClick={() => { server.logout().catch(() => {}); setUser(null); setWs([]); setActiveWs(null); setActiveRepo(null) }} style={{ ...btnGhost, height: 30 }}>Sign out</button>
+        <button onClick={() => { server.logout().catch(() => {}); setUser(null); setWs([]); setActiveWs(null) }} style={{ ...btnGhost, height: 30 }}>Sign out</button>
       </header>
 
       {error && <div style={{ padding: '8px 22px', background: 'var(--status-danger-surface)', color: 'var(--status-danger)', fontSize: 13 }}>{error}</div>}
@@ -59,10 +50,8 @@ export function TeamApp() {
       <main style={{ flex: 1, padding: 22, minHeight: 0 }}>
         {!activeWs ? (
           <Workspaces ws={ws} onOpen={openWorkspace} onCreate={(w) => { setWs((p) => [...p, w]); openWorkspace(w) }} setError={setError} />
-        ) : !activeRepo ? (
-          <Repos workspace={activeWs} repos={repos} onOpen={setActiveRepo} onCreate={(r) => { setRepos((p) => [...p, r]); setActiveRepo(r) }} setError={setError} />
         ) : (
-          <Board repo={activeRepo} setError={setError} />
+          <Repos workspace={activeWs} repos={repos} onOpen={(r) => openTeamRepo(r)} onCreate={(r) => { setRepos((p) => [...p, r]); openTeamRepo(r) }} setError={setError} />
         )}
       </main>
     </div>
@@ -180,127 +169,3 @@ function ConnectMachine({ workspaceId, setError }: { workspaceId: string; setErr
   )
 }
 
-function Board({ repo, setError }: { repo: SRepo; setError: (s: string) => void }) {
-  const [cards, setCards] = useState<SCard[]>([])
-  const [runs, setRuns] = useState<Record<string, SRunSummary>>({})
-  const [diffs, setDiffs] = useState<Record<string, SRun | 'loading'>>({})
-  const [title, setTitle] = useState('')
-  const wsRef = useRef<WebSocket | null>(null)
-
-  const upsert = useCallback((card: SCard) => setCards((cs) => (cs.some((c) => c.id === card.id) ? cs.map((c) => (c.id === card.id ? card : c)) : [...cs, card])), [])
-
-  useEffect(() => {
-    server.listCards(repo.id).then((r) => setCards(r.cards)).catch((e) => setError((e as Error).message))
-    const sock = server.openStream(repo.id, (ev) => {
-      if (ev.type === 'card.update') upsert(ev.card)
-      else if (ev.type === 'card.remove') setCards((cs) => cs.filter((c) => c.id !== ev.cardId))
-      else if (ev.type === 'run.update') setRuns((r) => ({ ...r, [ev.run.cardId]: ev.run }))
-    })
-    wsRef.current = sock
-    return () => sock.close()
-  }, [repo.id, upsert, setError])
-
-  const build = (card: SCard) => server.dispatch(card.id).catch((e) => setError((e as Error).message))
-  const approve = (card: SCard) => server.approve(card.id).catch((e) => setError((e as Error).message))
-  const toggleDiff = (card: SCard) => {
-    if (diffs[card.id]) return setDiffs((d) => { const n = { ...d }; delete n[card.id]; return n })
-    if (!card.runId) return
-    setDiffs((d) => ({ ...d, [card.id]: 'loading' }))
-    server.getRun(card.runId).then((run) => setDiffs((d) => ({ ...d, [card.id]: run }))).catch((e) => setError((e as Error).message))
-  }
-
-  const addCard = () => {
-    if (!title.trim()) return
-    server.createCard(repo.id, { title: title.trim() }).then((c) => { setTitle(''); upsert(c) }).catch((e) => setError((e as Error).message))
-  }
-  const move = (card: SCard, status: CardStatus) => {
-    upsert({ ...card, status }) // optimistic
-    server.patchCard(card.id, { status }).catch((e) => setError((e as Error).message))
-  }
-  const del = (card: SCard) => {
-    setCards((cs) => cs.filter((c) => c.id !== card.id))
-    server.deleteCard(card.id).catch((e) => setError((e as Error).message))
-  }
-
-  const visible = cards.filter((c) => !c.archived)
-  return (
-    <div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, fontSize: 12.5, color: 'var(--text-muted)' }}>
-        <RepoModePill mode={repo.repoMode} />
-        <span>
-          Cards build on <strong>your machine</strong> via your runner.{' '}
-          {repo.repoMode === 'remote' ? 'Approve opens a pull request.' : 'Approve merges into your local branch.'}
-        </span>
-      </div>
-      <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start', overflowX: 'auto' }}>
-      {COLS.map((col) => {
-        const list = visible.filter((c) => c.status === col.key).sort((a, b) => b.order - a.order)
-        return (
-          <section key={col.key} style={{ width: 260, flex: '0 0 260px', background: 'var(--surface-sunken, #f4f6f8)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)', padding: 10 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 6px 10px' }}>
-              <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 12, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--text-strong)' }}>{col.title}</span>
-              <span style={{ fontSize: 11.5, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{list.length}</span>
-            </div>
-            {col.key === 'ideas' && (
-              <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
-                <input value={title} onChange={(e) => setTitle(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addCard()} placeholder="New card…" style={{ ...input, height: 30, flex: 1, fontSize: 12.5 }} />
-                <button onClick={addCard} style={{ ...btn, height: 30, padding: '0 10px' }}>+</button>
-              </div>
-            )}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {list.map((c) => {
-                const run = runs[c.id]
-                const diff = diffs[c.id]
-                return (
-                  <div key={c.id} style={{ background: '#fff', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)', padding: '9px 10px' }}>
-                    <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 13, color: 'var(--text-strong)', marginBottom: 6 }}>{c.title}</div>
-                    {c.status === 'building' && (
-                      <div style={{ height: 5, borderRadius: 99, background: 'var(--neutral-200)', overflow: 'hidden', marginBottom: 6 }}>
-                        <div style={{ height: '100%', width: `${run?.progress ?? 0}%`, background: 'var(--color-highlighter, #ffd400)', transition: 'width .4s' }} />
-                      </div>
-                    )}
-                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                      {(c.status === 'ideas' || c.status === 'ready') && (
-                        <button onClick={() => build(c)} title="Build on your machine" style={{ height: 26, padding: '0 9px', border: '1px solid var(--brand-primary)', background: '#fff', color: 'var(--brand-primary)', borderRadius: 'var(--radius-xs)', cursor: 'pointer', fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 11.5 }}>▶ Build</button>
-                      )}
-                      {c.status === 'review' && (
-                        <button onClick={() => approve(c)} title="Commit + merge / open a PR on the build machine" style={{ height: 26, padding: '0 9px', border: '1px solid var(--status-success)', background: 'var(--status-success)', color: '#fff', borderRadius: 'var(--radius-xs)', cursor: 'pointer', fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 11.5 }}>✓ Approve</button>
-                      )}
-                      {(c.status === 'review' || c.status === 'merged') && c.runId && (
-                        <button onClick={() => toggleDiff(c)} style={{ height: 26, padding: '0 9px', border: '1px solid var(--border-default)', background: '#fff', color: 'var(--text-body)', borderRadius: 'var(--radius-xs)', cursor: 'pointer', fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 11.5 }}>{diff ? 'Hide diff' : 'View diff'}</button>
-                      )}
-                      {c.status === 'merged' && run?.prUrl && (
-                        <a href={run.prUrl} target="_blank" rel="noreferrer" style={{ height: 26, display: 'inline-flex', alignItems: 'center', padding: '0 9px', border: '1px solid var(--border-default)', background: '#fff', color: 'var(--brand-primary)', borderRadius: 'var(--radius-xs)', textDecoration: 'none', fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 11.5 }}>PR ↗</a>
-                      )}
-                      <select value={c.status} onChange={(e) => move(c, e.target.value as CardStatus)} style={{ flex: 1, height: 26, fontSize: 11.5, border: '1px solid var(--border-default)', borderRadius: 'var(--radius-xs)', background: '#fff' }}>
-                        {COLS.map((x) => (<option key={x.key} value={x.key}>{x.title}</option>))}
-                      </select>
-                      <button onClick={() => del(c)} title="Delete" style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-subtle)', fontSize: 14 }}>×</button>
-                    </div>
-                    {diff && diff !== 'loading' && (
-                      <div style={{ marginTop: 8, borderTop: '1px solid var(--border-subtle)', paddingTop: 8 }}>
-                        {diff.diff.length === 0 ? (
-                          <div style={{ fontSize: 11.5, color: 'var(--text-subtle)' }}>No changes recorded.</div>
-                        ) : (
-                          diff.diff.map((f, i) => (
-                            <div key={i} style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-body)', display: 'flex', gap: 6 }}>
-                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{f.file}</span>
-                              <span style={{ color: 'var(--status-success)' }}>+{f.add}</span>
-                              <span style={{ color: 'var(--status-danger)' }}>−{f.del}</span>
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    )}
-                    {diff === 'loading' && <div style={{ marginTop: 8, fontSize: 11.5, color: 'var(--text-subtle)' }}>Loading diff…</div>}
-                  </div>
-                )
-              })}
-            </div>
-          </section>
-        )
-      })}
-      </div>
-    </div>
-  )
-}

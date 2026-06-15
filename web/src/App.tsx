@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { AddAppModal } from './components/AddAppModal'
 import { AppPicker } from './components/AppPicker'
 import { ArchiveDrawer } from './components/ArchiveDrawer'
@@ -19,24 +19,11 @@ export default function App() {
   const view = useStore((s) => s.view)
   const appId = useStore((s) => s.appId)
   const init = useStore((s) => s.init)
-  const isBoard = view === 'board' && !!appId
   // Solo (your machine) vs Team (shared server). Solo is the default and is the
   // original single-developer app, completely unchanged.
-  const [mode, setMode] = useState<'solo' | 'team'>(() => {
-    try {
-      return localStorage.getItem('dispatch.mode') === 'team' ? 'team' : 'solo'
-    } catch {
-      return 'solo'
-    }
-  })
-  const changeMode = (m: 'solo' | 'team') => {
-    setMode(m)
-    try {
-      localStorage.setItem('dispatch.mode', m)
-    } catch {
-      /* ignore */
-    }
-  }
+  const mode = useStore((s) => s.mode)
+  const setMode = useStore((s) => s.setMode)
+  const isBoard = view === 'board' && !!appId
 
   // Probe for a local agent on mount; switch to live data if reachable + paired.
   useEffect(() => {
@@ -45,9 +32,17 @@ export default function App() {
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-      <TopBar mode={mode} onModeChange={changeMode} />
+      <TopBar mode={mode} onModeChange={setMode} />
       {mode === 'team' ? (
-        <TeamApp />
+        // Team: pick a workspace/repo in TeamApp; an opened repo uses the REAL board.
+        isBoard ? (
+          <>
+            <Board />
+            <CardDrawer />
+          </>
+        ) : (
+          <TeamApp />
+        )
       ) : (
         <>
           {isBoard ? <Board /> : <AppPicker />}

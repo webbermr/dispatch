@@ -167,6 +167,7 @@ export function ReviewDetail({ card }: { card: Card }) {
   const requestChanges = useStore((s) => s.requestChanges)
   const openWorktree = useStore((s) => s.openWorktree)
   const live = useStore((s) => s.live)
+  const teamMode = useStore((s) => s.mode === 'team')
 
   // Race: two agents finished — compare their diffs and pick a winner.
   if (card.raceRunIds && card.raceRunIds.length > 1) return <RaceReview card={card} />
@@ -230,10 +231,10 @@ export function ReviewDetail({ card }: { card: Card }) {
       {live && card.worktreePath && <PreviewBar card={card} />}
       <div style={{ display: 'flex', gap: 4, padding: '0 18px', borderBottom: '1px solid var(--border-subtle)' }}>
         {tabBtn('diff', 'Diff')}
-        {tabBtn('chat', 'Chat')}
+        {!teamMode && tabBtn('chat', 'Chat')}
       </div>
       <div style={{ flex: 1, overflowY: tab === 'diff' ? 'auto' : 'hidden', minHeight: 0 }}>
-        {tab === 'diff' ? <DiffView diff={card.diff || []} /> : <ChatView card={card} />}
+        {tab === 'diff' || teamMode ? <DiffView diff={card.diff || []} /> : <ChatView card={card} />}
       </div>
       {live && (
         <div style={{ padding: '0 22px' }}>
@@ -244,9 +245,11 @@ export function ReviewDetail({ card }: { card: Card }) {
         <Button variant="primary" onClick={() => approveMerge(card.id)}>
           Approve &amp; merge
         </Button>
-        <Button variant="secondary" onClick={() => requestChanges(card.id)}>
-          Request changes
-        </Button>
+        {!teamMode && (
+          <Button variant="secondary" onClick={() => requestChanges(card.id)}>
+            Request changes
+          </Button>
+        )}
       </div>
     </div>
   )

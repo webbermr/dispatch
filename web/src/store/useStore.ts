@@ -1,6 +1,8 @@
 import { create } from 'zustand'
 import { agent, AgentError, type AgentCard, type AgentRun, type ServerEvent } from '../lib/agentClient'
+import { server, type SRepo, type ServerEvent as TeamEvent } from '../lib/serverClient'
 import { currentStepLabel, mapApp, mapCard, runStatusToCard } from '../lib/agentMap'
+import { mapServerCard, mapServerRepo } from '../lib/serverMap'
 import { EXAMPLE_DESC, EXAMPLE_PROMPT } from '../lib/constants'
 import { branchSlug } from '../lib/helpers'
 import type {
@@ -24,6 +26,12 @@ export interface BoardFilter {
 }
 
 interface DispatchState {
+  // ---- mode: solo (local agent) vs team (control-plane server) ----
+  mode: 'solo' | 'team'
+  setMode: (m: 'solo' | 'team') => void
+  /** Open a team repo's board with the SAME Board/Card/drawer components. */
+  openTeamRepo: (repo: SRepo) => void
+
   // ---- navigation / view ----
   view: View
   appId: string | null
@@ -188,6 +196,15 @@ let toastTimer: ReturnType<typeof setTimeout> | undefined
 let chatTimer: ReturnType<typeof setTimeout> | undefined
 let agentTimer: ReturnType<typeof setTimeout> | undefined
 let ws: WebSocket | null = null
+let teamWs: WebSocket | null = null
+
+function initialMode(): 'solo' | 'team' {
+  try {
+    return localStorage.getItem('dispatch.mode') === 'team' ? 'team' : 'solo'
+  } catch {
+    return 'solo'
+  }
+}
 
 const NOTIFY_KEY = 'dispatch.notify'
 
@@ -352,6 +369,29 @@ export const useStore = create<DispatchState>((set, get) => {
           const cur = s.repoChats[ev.appId] ?? { messages: [], thinking: false }
           return { repoChats: { ...s.repoChats, [ev.appId]: { ...cur, thinking: ev.thinking, note: ev.thinking ? ev.note ?? cur.note : undefined } } }
         })
+        break
+      }
+    }
+  }
+
+  /** Apply a control-plane (team) WS event onto the shared board. */
+  const applyTeamEvent = (ev: TeamEvent) => {
+    switch (ev.type) {
+      case 'card.update': {
+        const incoming = mapServerCard(ev.card)
+        set((s) => {
+          const existing = s.cards.find((c) => c.id === incoming.id)
+          const merged = existing ? { ...existing, ...incoming, build: existing.build, diff: existing.diff } : incoming
+          return { cards: existing ? s.cards.map((c) => (c.id === incoming.id ? merged : c)) : [incoming, ...s.cards] }
+        })
+        break
+      }
+      case 'card.remove':
+        set((s) => ({ cards: s.cards.filter((c) => c.id !== ev.cardId), openCardId: s.openCardId === ev.cardId ? null : s.openCardId }))
+        break
+      case 'run.update': {
+        const c = get().cards.find((x) => x.id === ev.run.cardId)
+        if (c) updateCard(c.id, (cc) => ({ ...cc, build: { ...(cc.build ?? { progress: 0, currentStep: '', logs: [] }), progress: ev.run.progress } }))
         break
       }
     }
@@ -528,6 +568,7 @@ export const useStore = create<DispatchState>((set, get) => {
   }
 
   return {
+    mode: initialMode(),
     view: 'picker',
     appId: null,
     openCardId: null,
@@ -614,18 +655,57 @@ export const useStore = create<DispatchState>((set, get) => {
     },
 
     // ---- navigation ----
+    // ---- mode + team ----
+    setMode: (m) => {
+      try {
+        localStorage.setItem('dispatch.mode', m)
+      } catch {
+        /* ignore */
+      }
+      teamWs?.close()
+      teamWs = null
+      set({ mode: m, view: 'picker', appId: null, openCardId: null })
+      if (m === 'solo') {
+        // Re-load the solo board from the agent (or empty if not connected).
+        if (get().live) void loadLive()
+        else set({ apps: [], cards: [] })
+      } else {
+        set({ apps: [], cards: [] }) // the team picker (TeamApp) drives selection
+      }
+    },
+    openTeamRepo: (repo) => {
+      teamWs?.close()
+      const app = mapServerRepo(repo, 0)
+      set({ apps: [app], cards: [], appId: repo.id, view: 'board', openCardId: null })
+      server
+        .listCards(repo.id)
+        .then((r) => set({ cards: r.cards.map(mapServerCard) }))
+        .catch((err) => toast(`Couldn't load cards: ${(err as Error).message}`))
+      teamWs = server.openStream(repo.id, applyTeamEvent)
+    },
     openApp: (id) => {
       set({ view: 'board', appId: id })
-      if (!get().live) {
+      if (!get().live && get().mode === 'solo') {
         get().cards.forEach((c) => {
           if (c.appId === id && c.status === 'building') runBuild(c.id)
         })
       }
     },
-    backToPicker: () => set({ view: 'picker', appId: null, openCardId: null }),
+    backToPicker: () => {
+      if (get().mode === 'team') {
+        teamWs?.close()
+        teamWs = null
+      }
+      set({ view: 'picker', appId: null, openCardId: null })
+    },
     openCard: (id) => {
       const c = card(id)
       set((s) => ({ openCardId: id, detailTab: c && c.status === 'review' ? 'diff' : s.detailTab }))
+      if (get().mode === 'team') {
+        // Pull the run's diff so the Review/Merged diff view has content.
+        if (c?.runId) server.getRun(c.runId).then((run) => updateCard(id, (cc) => ({ ...cc, diff: run.diff, build: { progress: run.progress, currentStep: '', logs: run.logs ?? [] } }))).catch(() => {})
+        return
+      }
       if (get().live && c?.runId) refreshRun(c.runId)
     },
     closeCard: () => set({ openCardId: null }),
@@ -636,6 +716,13 @@ export const useStore = create<DispatchState>((set, get) => {
     newCard: () => {
       const appId = get().appId
       if (!appId) return
+      if (get().mode === 'team') {
+        server
+          .createCard(appId, { title: 'Untitled card', desc: '', prompt: '' })
+          .then((c) => set((s) => ({ cards: s.cards.some((x) => x.id === c.id) ? s.cards : [mapServerCard(c), ...s.cards], openCardId: c.id, focusTitleCardId: c.id })))
+          .catch((err) => toast(`Could not create card: ${(err as Error).message}`))
+        return
+      }
       if (get().live) {
         agent
           .createCard({ appId, title: 'Untitled card', desc: EXAMPLE_DESC, prompt: EXAMPLE_PROMPT })
@@ -666,14 +753,15 @@ export const useStore = create<DispatchState>((set, get) => {
     },
     editCard: (id, patch) => {
       updateCard(id, (c) => ({ ...c, ...patch }))
-      if (get().live) {
-        // Accumulate fields and debounce a single PATCH per card.
+      if (get().live || get().mode === 'team') {
+        // Accumulate fields and debounce a single PATCH per card (agent or server).
         pendingPatch[id] = { ...(pendingPatch[id] || {}), ...patch }
         clearTimeout(promptPatch[id])
+        const team = get().mode === 'team'
         promptPatch[id] = setTimeout(() => {
           const p = pendingPatch[id]
           delete pendingPatch[id]
-          if (p) agent.patchCard(id, p).catch(() => {})
+          if (p) (team ? server.patchCard(id, p) : agent.patchCard(id, p)).catch(() => {})
         }, 500)
       }
     },
@@ -697,13 +785,25 @@ export const useStore = create<DispatchState>((set, get) => {
         openCardId: s.openCardId === id ? null : s.openCardId,
       }))
       toast('Card deleted')
-      if (get().live) agent.deleteCard(id).catch((err) => toast(`Delete failed: ${(err as Error).message}`))
+      if (get().mode === 'team') server.deleteCard(id).catch((err) => toast(`Delete failed: ${(err as Error).message}`))
+      else if (get().live) agent.deleteCard(id).catch((err) => toast(`Delete failed: ${(err as Error).message}`))
     },
 
     // ---- dispatch / clone ----
     startCard: (id) => {
       const c = card(id)
       if (!c) return
+      if (get().mode === 'team') {
+        updateCard(id, (cc) => ({ ...cc, status: 'building', build: { progress: 0, currentStep: 'Dispatching…', logs: [] } }))
+        server
+          .dispatch(id)
+          .then(() => toast('Building on your machine…'))
+          .catch((err) => {
+            updateCard(id, (cc) => ({ ...cc, status: 'ready' }))
+            toast(`Build failed: ${(err as Error).message}`)
+          })
+        return
+      }
       if (get().agentStatus !== 'connected') {
         set({ connectOpen: true })
         toast('Connect your machine to dispatch')
@@ -1242,7 +1342,8 @@ export const useStore = create<DispatchState>((set, get) => {
       }
       updateCard(id, (cc) => ({ ...cc, status: key }))
       set({ draggingId: null })
-      if (get().live) agent.patchCard(id, { status: key }).catch(() => {})
+      if (get().mode === 'team') server.patchCard(id, { status: key }).catch(() => {})
+      else if (get().live) agent.patchCard(id, { status: key }).catch(() => {})
     },
     dropOnCard: (draggedId, targetId, position) => {
       if (!draggedId || draggedId === targetId) {
@@ -1286,7 +1387,8 @@ export const useStore = create<DispatchState>((set, get) => {
       }
       updateCard(draggedId, (c) => ({ ...c, order: newOrder }))
       set({ draggingId: null })
-      if (get().live) agent.patchCard(draggedId, { order: newOrder }).catch(() => {})
+      if (get().mode === 'team') server.patchCard(draggedId, { order: newOrder }).catch(() => {})
+      else if (get().live) agent.patchCard(draggedId, { order: newOrder }).catch(() => {})
     },
     dropOnColumn: (draggedId, status) => {
       const dragged = card(draggedId)
@@ -1311,7 +1413,8 @@ export const useStore = create<DispatchState>((set, get) => {
       const newOrder = last ? (last.order ?? 0) - 1 : dragged.order ?? 0
       updateCard(draggedId as string, (c) => ({ ...c, order: newOrder }))
       set({ draggingId: null })
-      if (get().live) agent.patchCard(draggedId as string, { order: newOrder }).catch(() => {})
+      if (get().mode === 'team') server.patchCard(draggedId as string, { order: newOrder }).catch(() => {})
+      else if (get().live) agent.patchCard(draggedId as string, { order: newOrder }).catch(() => {})
     },
     setDragging: (id) => set({ draggingId: id }),
     pullRepo: (id) => {
@@ -1354,6 +1457,7 @@ export const useStore = create<DispatchState>((set, get) => {
       }, 1100)
     },
     requestChanges: (id) => {
+      if (get().mode === 'team') return // team review has no chat/iterate yet
       const note = (get().chatDrafts[id] || '').trim()
       const c = card(id)
       if (!c) return
@@ -1384,6 +1488,11 @@ export const useStore = create<DispatchState>((set, get) => {
     },
     approveMerge: (id) => {
       const c = card(id)
+      if (get().mode === 'team') {
+        toast('Approving — merging on the build machine…')
+        server.approve(id).catch((err) => toast(`Approve failed: ${(err as Error).message}`))
+        return
+      }
       if (get().live && c?.runId) {
         toast('Merging…')
         agent

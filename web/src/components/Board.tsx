@@ -17,6 +17,7 @@ export function Board() {
   const [backHover, setBackHover] = useState(false)
 
   const filter = useStore((s) => s.filter)
+  const teamMode = useStore((s) => s.mode === 'team')
   const app = apps.find((a) => a.id === appId)
   if (!app) return null
   // Archived cards never show on the board; the rest are subject to the filter bar.
@@ -71,7 +72,7 @@ export function Board() {
         {live && <DecomposeChip appId={app.id} />}
         {live && <AgentsMdChip appId={app.id} />}
         {live && <QueueStatus appId={app.id} />}
-        <SettingsMenu appId={app.id} />
+        {!teamMode && <SettingsMenu appId={app.id} />}
         <Button variant="secondary" onClick={newCard} style={{ height: 36, color: 'var(--brand-primary)' }}>
           + New card
         </Button>
@@ -474,6 +475,7 @@ function FilterBar({ appId }: { appId: string }) {
   const setStatsOpen = useStore((s) => s.setStatsOpen)
   const setArchiveOpen = useStore((s) => s.setArchiveOpen)
   const openRepoChat = useStore((s) => s.openRepoChat)
+  const teamMode = useStore((s) => s.mode === 'team')
   const archivedCount = useStore((s) => s.cards.filter((c) => c.appId === appId && c.archived).length)
   const active = filter.text.trim() !== '' || filter.type !== 'all' || filter.agent !== 'all'
   return (
@@ -504,18 +506,22 @@ function FilterBar({ appId }: { appId: string }) {
         </button>
       )}
       <div style={{ flex: 1 }} />
-      <button onClick={openRepoChat} title="Ask questions about this repo" style={{ ...iconBtn(false), color: 'var(--brand-primary)' }}>
-        💬 Ask
-      </button>
-      <button onClick={toggleNotify} title={notify ? 'Desktop notifications on' : 'Get notified when builds finish'} style={iconBtn(notify)}>
-        {notify ? '🔔' : '🔕'}
-      </button>
-      <button onClick={() => setStatsOpen(true)} title="Build stats" style={iconBtn(false)}>
-        📊 Stats
-      </button>
-      <button onClick={() => setArchiveOpen(true)} title="Archived cards" style={iconBtn(false)}>
-        🗄 Archive{archivedCount ? ` (${archivedCount})` : ''}
-      </button>
+      {!teamMode && (
+        <>
+          <button onClick={openRepoChat} title="Ask questions about this repo" style={{ ...iconBtn(false), color: 'var(--brand-primary)' }}>
+            💬 Ask
+          </button>
+          <button onClick={toggleNotify} title={notify ? 'Desktop notifications on' : 'Get notified when builds finish'} style={iconBtn(notify)}>
+            {notify ? '🔔' : '🔕'}
+          </button>
+          <button onClick={() => setStatsOpen(true)} title="Build stats" style={iconBtn(false)}>
+            📊 Stats
+          </button>
+          <button onClick={() => setArchiveOpen(true)} title="Archived cards" style={iconBtn(false)}>
+            🗄 Archive{archivedCount ? ` (${archivedCount})` : ''}
+          </button>
+        </>
+      )}
     </div>
   )
 }
