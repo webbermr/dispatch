@@ -63,6 +63,8 @@ export interface Card {
   scaffold?: boolean
   parentId?: string
   assigneeUserId?: string
+  /** The latest run building/built for this card (server-side run id). */
+  runId?: string
   createdBy: string
   archived?: boolean
   createdAt: number
@@ -84,6 +86,59 @@ export interface Session {
   createdAt: number
 }
 
+/** A long-lived token a member pairs their local agent (runner) with. */
+export interface RunnerToken {
+  id: string // equals the token value
+  token: string
+  workspaceId: string
+  userId: string
+  createdAt: number
+}
+
+export type RunStatus = 'building' | 'needs_review' | 'merged' | 'failed' | 'interrupted' | 'ready'
+export interface RunStep {
+  id: string
+  state: 'pending' | 'active' | 'done'
+}
+export interface DiffLine {
+  t: 'ctx' | 'add' | 'del'
+  text: string
+}
+export interface DiffFile {
+  file: string
+  add: number
+  del: number
+  lines: DiffLine[]
+}
+export interface RunChatMsg {
+  role: 'agent' | 'user'
+  text: string
+  ts: number
+}
+
+/** A build executed on a runner (a developer's machine), reported to the board. */
+export interface Run {
+  id: string
+  repoId: string
+  workspaceId: string
+  cardId: string
+  userId: string // who dispatched it (whose machine runs it)
+  runnerName?: string
+  agentId?: string
+  model?: string
+  status: RunStatus
+  progress: number
+  steps: RunStep[]
+  branch?: string
+  prUrl?: string
+  error?: string
+  logs: string[]
+  diff: DiffFile[]
+  chat: RunChatMsg[]
+  createdAt: number
+  updatedAt: number
+}
+
 export interface Db {
   users: User[]
   workspaces: Workspace[]
@@ -92,6 +147,8 @@ export interface Db {
   cards: Card[]
   comments: Comment[]
   sessions: Session[]
+  runnerTokens: RunnerToken[]
+  runs: Run[]
 }
 
-export const EMPTY_DB: Db = { users: [], workspaces: [], memberships: [], repos: [], cards: [], comments: [], sessions: [] }
+export const EMPTY_DB: Db = { users: [], workspaces: [], memberships: [], repos: [], cards: [], comments: [], sessions: [], runnerTokens: [], runs: [] }

@@ -42,10 +42,29 @@ function openBrowser(url: string): void {
   }
 }
 
+function flag(argv: string[], name: string): string | undefined {
+  const i = argv.indexOf(name)
+  return i >= 0 ? argv[i + 1] : undefined
+}
+
 async function main(): Promise<void> {
   const argv = process.argv.slice(2)
   if (argv[0] === 'add') {
     await addRepo(argv[1], argv[2])
+    return
+  }
+  // Runner mode: connect outbound to a control-plane server and build its jobs locally.
+  if (argv[0] === 'runner') {
+    const serverUrl = flag(argv, '--server') || process.env.DISPATCH_SERVER_URL
+    const token = flag(argv, '--token') || process.env.DISPATCH_RUNNER_TOKEN
+    if (!serverUrl || !token) {
+      console.error('usage: dispatch-agent runner --server <url> --token <runner-token>')
+      process.exit(1)
+    }
+    ensureHome()
+    const { startRunner } = await import('./runner/index.js')
+    console.log(`\n  Dispatch runner → ${serverUrl}\n`)
+    startRunner(serverUrl, token)
     return
   }
   const { pairCode, open } = parseArgs(argv)

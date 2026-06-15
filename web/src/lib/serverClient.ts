@@ -24,6 +24,7 @@ export interface SCard {
   order: number
   scaffold?: boolean
   assigneeUserId?: string
+  runId?: string
   createdBy: string
   archived?: boolean
   createdAt: number
@@ -31,11 +32,27 @@ export interface SCard {
 }
 export interface SComment { id: string; cardId: string; userId: string; text: string; createdAt: number }
 
+export interface SDiffFile { file: string; add: number; del: number; lines: { t: 'ctx' | 'add' | 'del'; text: string }[] }
+export interface SRun {
+  id: string
+  cardId: string
+  status: string
+  progress: number
+  branch?: string
+  prUrl?: string
+  error?: string
+  logs: string[]
+  diff: SDiffFile[]
+  chat: { role: 'agent' | 'user'; text: string; ts: number }[]
+}
+export interface SRunSummary { id: string; cardId: string; status: string; progress: number; branch?: string; prUrl?: string }
+
 export type ServerEvent =
   | { type: 'ready'; repoId: string }
   | { type: 'card.update'; repoId: string; card: SCard }
   | { type: 'card.remove'; repoId: string; cardId: string }
   | { type: 'comment.create'; repoId: string; cardId: string; comment: SComment }
+  | { type: 'run.update'; repoId: string; run: SRunSummary }
 
 export function defaultServerUrl(): string {
   try {
@@ -144,6 +161,15 @@ export class ServerClient {
   }
   deleteCard(id: string): Promise<void> {
     return this.req(`/cards/${id}`, { method: 'DELETE' })
+  }
+  dispatch(cardId: string): Promise<SRun> {
+    return this.req(`/cards/${cardId}/dispatch`, { method: 'POST' })
+  }
+  getRun(runId: string): Promise<SRun> {
+    return this.req(`/runs/${runId}`)
+  }
+  createRunnerToken(wsId: string): Promise<{ token: string }> {
+    return this.req(`/workspaces/${wsId}/runner-tokens`, { method: 'POST' })
   }
 
   openStream(repoId: string, onEvent: (ev: ServerEvent) => void): WebSocket {

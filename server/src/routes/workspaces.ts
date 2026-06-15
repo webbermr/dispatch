@@ -4,6 +4,7 @@ import { upsertUser } from '../auth/session.js'
 import { id, slugify } from '../ids.js'
 import { store } from '../store/jsonStore.js'
 import type { Role } from '../store/types.js'
+import { randomBytes } from 'node:crypto'
 
 const ROLES: Role[] = ['admin', 'builder', 'viewer']
 
@@ -59,6 +60,16 @@ export function workspacesRouter(): Router {
       store.memberships.insert({ id: id('m'), workspaceId: req.params.id, userId: member.id, role: memberRole, createdAt: Date.now() })
     }
     res.status(201).json({ user: member, role: memberRole })
+  })
+
+  // Mint a runner token to pair a local agent with this workspace (builder+).
+  r.post('/workspaces/:id/runner-tokens', (req, res) => {
+    const user = currentUser(res)
+    const role = workspaceRole(user.id, req.params.id)
+    if (!role || !roleAtLeast(role, 'builder')) return res.status(403).json({ error: 'requires builder role' })
+    const token = randomBytes(24).toString('hex')
+    store.runnerTokens.insert({ id: token, token, workspaceId: req.params.id, userId: user.id, createdAt: Date.now() })
+    res.status(201).json({ token })
   })
 
   return r

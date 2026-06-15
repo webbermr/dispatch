@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { server, type SCard, type SRepo, type SUser, type SWorkspace, type CardStatus } from '../lib/serverClient'
+import { server, type SCard, type SRepo, type SRunSummary, type SRun, type SUser, type SWorkspace, type CardStatus } from '../lib/serverClient'
 
 const COLS: { key: CardStatus; title: string }[] = [
   { key: 'ideas', title: 'Ideas' },
@@ -142,11 +142,13 @@ function Repos({ workspace, repos, onOpen, onCreate, setError }: { workspace: SW
         <button onClick={create} style={btn}>+ Add repo</button>
       </div>
       {workspace.role === 'admin' && (
-        <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
           <input value={invite} onChange={(e) => setInvite(e.target.value)} placeholder="invite teammate by email (builder)" style={{ ...input, flex: 1 }} />
           <button onClick={() => invite.trim() && server.inviteMember(workspace.id, invite.trim(), 'builder').then(() => setInvite('')).catch((e) => setError((e as Error).message))} style={btnGhost}>Invite</button>
         </div>
       )}
+      <ConnectMachine workspaceId={workspace.id} setError={setError} />
+      <div style={{ height: 18 }} />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px,1fr))', gap: 12 }}>
         {repos.map((r) => (
           <button key={r.id} onClick={() => onOpen(r)} style={{ textAlign: 'left', padding: 16, background: '#fff', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)', cursor: 'pointer', boxShadow: 'var(--shadow-xs)' }}>
@@ -160,8 +162,26 @@ function Repos({ workspace, repos, onOpen, onCreate, setError }: { workspace: SW
   )
 }
 
+function ConnectMachine({ workspaceId, setError }: { workspaceId: string; setError: (s: string) => void }) {
+  const [cmd, setCmd] = useState<string | null>(null)
+  const gen = () => server.createRunnerToken(workspaceId).then((r) => setCmd(`dispatch-agent runner --server ${server.baseUrl} --token ${r.token}`)).catch((e) => setError((e as Error).message))
+  return (
+    <div style={{ background: 'var(--neutral-50)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)', padding: '12px 14px' }}>
+      <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 13, color: 'var(--text-strong)', marginBottom: 4 }}>🖥 Connect a machine (build runner)</div>
+      <p style={{ fontSize: 12.5, color: 'var(--text-muted)', margin: '0 0 8px', lineHeight: 1.45 }}>Cards build on your own machine. Run your local agent in runner mode, with the repo cloned, to enable building.</p>
+      {cmd ? (
+        <code style={{ display: 'block', fontFamily: 'var(--font-mono)', fontSize: 12, background: '#fff', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-xs)', padding: '8px 10px', wordBreak: 'break-all', color: 'var(--text-strong)' }}>{cmd}</code>
+      ) : (
+        <button onClick={gen} style={btnGhost}>Generate runner command</button>
+      )}
+    </div>
+  )
+}
+
 function Board({ repo, setError }: { repo: SRepo; setError: (s: string) => void }) {
   const [cards, setCards] = useState<SCard[]>([])
+  const [runs, setRuns] = useState<Record<string, SRunSummary>>({})
+  const [diffs, setDiffs] = useState<Record<string, SRun | 'loading'>>({})
   const [title, setTitle] = useState('')
   const wsRef = useRef<WebSocket | null>(null)
 
@@ -172,10 +192,19 @@ function Board({ repo, setError }: { repo: SRepo; setError: (s: string) => void 
     const sock = server.openStream(repo.id, (ev) => {
       if (ev.type === 'card.update') upsert(ev.card)
       else if (ev.type === 'card.remove') setCards((cs) => cs.filter((c) => c.id !== ev.cardId))
+      else if (ev.type === 'run.update') setRuns((r) => ({ ...r, [ev.run.cardId]: ev.run }))
     })
     wsRef.current = sock
     return () => sock.close()
   }, [repo.id, upsert, setError])
+
+  const build = (card: SCard) => server.dispatch(card.id).catch((e) => setError((e as Error).message))
+  const toggleDiff = (card: SCard) => {
+    if (diffs[card.id]) return setDiffs((d) => { const n = { ...d }; delete n[card.id]; return n })
+    if (!card.runId) return
+    setDiffs((d) => ({ ...d, [card.id]: 'loading' }))
+    server.getRun(card.runId).then((run) => setDiffs((d) => ({ ...d, [card.id]: run }))).catch((e) => setError((e as Error).message))
+  }
 
   const addCard = () => {
     if (!title.trim()) return
@@ -208,17 +237,48 @@ function Board({ repo, setError }: { repo: SRepo; setError: (s: string) => void 
               </div>
             )}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {list.map((c) => (
-                <div key={c.id} style={{ background: '#fff', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)', padding: '9px 10px' }}>
-                  <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 13, color: 'var(--text-strong)', marginBottom: 6 }}>{c.title}</div>
-                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                    <select value={c.status} onChange={(e) => move(c, e.target.value as CardStatus)} style={{ flex: 1, height: 26, fontSize: 11.5, border: '1px solid var(--border-default)', borderRadius: 'var(--radius-xs)', background: '#fff' }}>
-                      {COLS.map((x) => (<option key={x.key} value={x.key}>{x.title}</option>))}
-                    </select>
-                    <button onClick={() => del(c)} title="Delete" style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-subtle)', fontSize: 14 }}>×</button>
+              {list.map((c) => {
+                const run = runs[c.id]
+                const diff = diffs[c.id]
+                return (
+                  <div key={c.id} style={{ background: '#fff', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)', padding: '9px 10px' }}>
+                    <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 13, color: 'var(--text-strong)', marginBottom: 6 }}>{c.title}</div>
+                    {c.status === 'building' && (
+                      <div style={{ height: 5, borderRadius: 99, background: 'var(--neutral-200)', overflow: 'hidden', marginBottom: 6 }}>
+                        <div style={{ height: '100%', width: `${run?.progress ?? 0}%`, background: 'var(--color-highlighter, #ffd400)', transition: 'width .4s' }} />
+                      </div>
+                    )}
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      {(c.status === 'ideas' || c.status === 'ready') && (
+                        <button onClick={() => build(c)} title="Build on your machine" style={{ height: 26, padding: '0 9px', border: '1px solid var(--brand-primary)', background: '#fff', color: 'var(--brand-primary)', borderRadius: 'var(--radius-xs)', cursor: 'pointer', fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 11.5 }}>▶ Build</button>
+                      )}
+                      {(c.status === 'review' || c.status === 'merged') && c.runId && (
+                        <button onClick={() => toggleDiff(c)} style={{ height: 26, padding: '0 9px', border: '1px solid var(--border-default)', background: '#fff', color: 'var(--text-body)', borderRadius: 'var(--radius-xs)', cursor: 'pointer', fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 11.5 }}>{diff ? 'Hide diff' : 'View diff'}</button>
+                      )}
+                      <select value={c.status} onChange={(e) => move(c, e.target.value as CardStatus)} style={{ flex: 1, height: 26, fontSize: 11.5, border: '1px solid var(--border-default)', borderRadius: 'var(--radius-xs)', background: '#fff' }}>
+                        {COLS.map((x) => (<option key={x.key} value={x.key}>{x.title}</option>))}
+                      </select>
+                      <button onClick={() => del(c)} title="Delete" style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-subtle)', fontSize: 14 }}>×</button>
+                    </div>
+                    {diff && diff !== 'loading' && (
+                      <div style={{ marginTop: 8, borderTop: '1px solid var(--border-subtle)', paddingTop: 8 }}>
+                        {diff.diff.length === 0 ? (
+                          <div style={{ fontSize: 11.5, color: 'var(--text-subtle)' }}>No changes recorded.</div>
+                        ) : (
+                          diff.diff.map((f, i) => (
+                            <div key={i} style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-body)', display: 'flex', gap: 6 }}>
+                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{f.file}</span>
+                              <span style={{ color: 'var(--status-success)' }}>+{f.add}</span>
+                              <span style={{ color: 'var(--status-danger)' }}>−{f.del}</span>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    )}
+                    {diff === 'loading' && <div style={{ marginTop: 8, fontSize: 11.5, color: 'var(--text-subtle)' }}>Loading diff…</div>}
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           </section>
         )

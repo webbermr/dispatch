@@ -1,10 +1,21 @@
 import type { Card, Comment } from './store/types.js'
 
+/** Slim run state pushed to the board (full logs/diff fetched via GET /runs/:id). */
+export interface RunSummary {
+  id: string
+  cardId: string
+  status: string
+  progress: number
+  branch?: string
+  prUrl?: string
+}
+
 /** Events fanned out to everyone viewing a repo's board (mirrors the agent's model). */
 export type BoardEvent =
   | { type: 'card.update'; repoId: string; card: Card }
   | { type: 'card.remove'; repoId: string; cardId: string }
   | { type: 'comment.create'; repoId: string; cardId: string; comment: Comment }
+  | { type: 'run.update'; repoId: string; run: RunSummary }
 
 type Sink = (ev: BoardEvent) => void
 

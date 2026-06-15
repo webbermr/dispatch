@@ -2,6 +2,7 @@ import { Router } from 'express'
 import { currentUser, isAccessError, repoAccess, requireAuth } from '../auth/access.js'
 import { bus } from '../bus.js'
 import { id } from '../ids.js'
+import { dispatchCard } from '../runners.js'
 import { store } from '../store/jsonStore.js'
 import type { CardStatus, CardType, Priority } from '../store/types.js'
 
@@ -81,6 +82,29 @@ export function cardsRouter(): Router {
     store.cards.delete(card.id)
     bus.publish({ type: 'card.remove', repoId: card.repoId, cardId: card.id })
     res.status(204).end()
+  })
+
+  // Dispatch a card to the dispatcher's runner (builds on their machine).
+  r.post('/cards/:id/dispatch', (req, res) => {
+    const user = currentUser(res)
+    const card = store.cards.byId(req.params.id)
+    if (!card) return res.status(404).json({ error: 'unknown card' })
+    const a = repoAccess(user.id, card.repoId, 'builder')
+    if (isAccessError(a)) return res.status(a.status).json({ error: a.error })
+    try {
+      res.status(201).json(dispatchCard(card, a.repo, user))
+    } catch (err) {
+      res.status((err as { status?: number }).status ?? 400).json({ error: (err as Error).message })
+    }
+  })
+
+  // Full run state (logs + diff) for a card's build.
+  r.get('/runs/:id', (req, res) => {
+    const run = store.runs.byId(req.params.id)
+    if (!run) return res.status(404).json({ error: 'unknown run' })
+    const a = repoAccess(currentUser(res).id, run.repoId, 'viewer')
+    if (isAccessError(a)) return res.status(a.status).json({ error: a.error })
+    res.json(run)
   })
 
   // Comments — any member can read; any member can comment.

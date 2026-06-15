@@ -67,6 +67,8 @@ export class JsonStore {
   readonly cards: Collection<Db['cards'][number]>
   readonly comments: Collection<Db['comments'][number]>
   readonly sessions: Collection<Db['sessions'][number]>
+  readonly runnerTokens: Collection<Db['runnerTokens'][number]>
+  readonly runs: Collection<Db['runs'][number]>
 
   constructor() {
     this.db = this.load()
@@ -78,6 +80,8 @@ export class JsonStore {
     this.cards = new Collection(this.db.cards, save)
     this.comments = new Collection(this.db.comments, save)
     this.sessions = new Collection(this.db.sessions, save)
+    this.runnerTokens = new Collection(this.db.runnerTokens, save)
+    this.runs = new Collection(this.db.runs, save)
   }
 
   private load(): Db {
