@@ -7,6 +7,7 @@ import { CardDrawer } from './components/CardDrawer'
 import { CloneModal } from './components/CloneModal'
 import { ConfirmModal } from './components/ConfirmModal'
 import { ConnectModal } from './components/ConnectModal'
+import { CreateAppWizard } from './components/CreateAppWizard'
 import { RepoChatDrawer } from './components/RepoChatDrawer'
 import { StatsModal } from './components/StatsModal'
 import { Toast } from './components/Toast'
@@ -36,6 +37,7 @@ export default function App() {
       <ArchiveDrawer />
       <StatsModal />
       <RepoChatDrawer />
+      <CreateAppWizard />
       <Toast />
     </div>
   )

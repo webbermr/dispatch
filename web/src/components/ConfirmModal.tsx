@@ -12,7 +12,6 @@ export function ConfirmModal() {
 
   return (
     <div
-      onClick={closeConfirm}
       style={{
         position: 'fixed',
         inset: 0,

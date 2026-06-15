@@ -35,6 +35,27 @@ export async function ghCreatePr(
   return { ok: false, error: error || `gh pr create exited ${r.code}` }
 }
 
+/**
+ * Create a new GitHub repo from an existing local repo and push it.
+ * Requires gh to be authed. Returns the new repo's URL.
+ */
+export async function ghCreateRepo(
+  cwd: string,
+  name: string,
+  visibility: 'private' | 'public',
+): Promise<{ ok: true; url: string } | { ok: false; error: string }> {
+  const r = await run(GH, ['repo', 'create', name, `--${visibility}`, '--source', cwd, '--remote', 'origin', '--push'], {
+    cwd,
+    timeoutMs: 60000,
+    env: { GH_PROMPT_DISABLED: '1' },
+  })
+  const out = `${r.stdout}\n${r.stderr}`
+  const url = out.match(/https?:\/\/\S+/)?.[0]
+  if (r.code === 0 && url) return { ok: true, url }
+  const error = out.trim().split('\n').filter(Boolean).slice(-2).join(' ')
+  return { ok: false, error: error || `gh repo create exited ${r.code}` }
+}
+
 export interface CheckRun {
   name: string
   state: string

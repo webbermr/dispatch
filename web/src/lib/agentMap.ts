@@ -21,6 +21,7 @@ export function mapApp(a: AgentApp, index: number): App {
     planFirst: a.planFirst,
     autoRetry: a.autoRetry,
     previewCommand: a.previewCommand,
+    repoMode: a.repoMode,
     hasRemote: a.hasRemote,
     forge: a.forge,
     branches: a.branches,
@@ -72,6 +73,8 @@ export function mapCard(c: AgentCard, run?: AgentRun): Card {
     model: c.model,
     queued: c.queued,
     parentId: c.parentId,
+    scaffold: c.scaffold,
+    blocked: c.blocked,
     archived: c.archived,
     archivedAt: c.archivedAt,
     // Fall back to createdAt so every card has a stable, sortable order.

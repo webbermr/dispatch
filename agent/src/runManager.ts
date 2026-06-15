@@ -22,7 +22,7 @@ interface SubCardSpec {
 }
 
 /** Pull a JSON array of {title, prompt, type} out of an agent's free-text reply. */
-function parseDecompose(text: string): SubCardSpec[] {
+function parseDecompose(text: string, max = 8): SubCardSpec[] {
   if (!text) return []
   const start = text.indexOf('[')
   const end = text.lastIndexOf(']')
@@ -37,7 +37,7 @@ function parseDecompose(text: string): SubCardSpec[] {
   const types: CardType[] = ['feature', 'bug', 'enhancement']
   return arr
     .filter((x): x is Record<string, unknown> => !!x && typeof x === 'object' && typeof (x as { title?: unknown }).title === 'string' && !!(x as { title: string }).title.trim())
-    .slice(0, 8)
+    .slice(0, Math.max(1, max))
     .map((x) => ({
       title: String(x.title).trim().slice(0, 80),
       prompt: typeof x.prompt === 'string' && x.prompt.trim() ? String(x.prompt).trim() : String(x.title).trim(),
@@ -70,8 +70,11 @@ export interface DispatchRequest {
   agentId?: CodingAgentId
 }
 
-/** Either a live run, or a note that the card was queued (concurrency cap hit). */
-export type DispatchResult = { runId: string; branch: string; agentId: CodingAgentId } | { queued: true; agentId: CodingAgentId }
+/** A live run, a queued note (cap hit), or a blocked note (waiting on the scaffold). */
+export type DispatchResult =
+  | { runId: string; branch: string; agentId: CodingAgentId }
+  | { queued: true; agentId: CodingAgentId }
+  | { blocked: true; scaffoldTitle: string }
 
 const PRI_RANK: Record<Priority, number> = { high: 0, med: 1, low: 2 }
 
@@ -82,6 +85,7 @@ export interface NewCardInput {
   title?: string
   desc?: string
   prompt?: string
+  scaffold?: boolean
 }
 
 /** Map a run status onto the board-facing card status. */
@@ -203,6 +207,7 @@ export class RunManager {
       title: input.title ?? 'Untitled card',
       desc: input.desc ?? '',
       prompt: input.prompt ?? '',
+      scaffold: input.scaffold || undefined,
       createdAt: now,
       updatedAt: now,
     }
@@ -214,7 +219,7 @@ export class RunManager {
 
   /** Patch editable card fields (prompt, title, desc, type, priority) and
    *  non-build status moves (ideas↔ready↔merged via drag). */
-  patchCard(id: string, patch: Partial<Pick<CardRecord, 'title' | 'desc' | 'prompt' | 'type' | 'priority' | 'status' | 'base' | 'order' | 'model'>>): CardRecord {
+  patchCard(id: string, patch: Partial<Pick<CardRecord, 'title' | 'desc' | 'prompt' | 'type' | 'priority' | 'status' | 'base' | 'order' | 'model' | 'scaffold'>>): CardRecord {
     const card = this.cards.get(id)
     if (!card) throw new Error('unknown card')
     // Moving a queued card out of the queue (e.g. dragging it) cancels the queue slot.
@@ -223,6 +228,8 @@ export class RunManager {
       this.queue = this.queue.filter((q) => q !== id)
       this.emitQueue()
     }
+    // Likewise, manually moving a blocked card releases it from the scaffold gate.
+    if (patch.status && card.blocked) card.blocked = false
     Object.assign(card, patch, { updatedAt: Date.now() })
     this.persist()
     bus.publish({ type: 'card.update', card })
@@ -481,6 +488,11 @@ export class RunManager {
     return r
   }
 
+  /** A scaffold card in this app that hasn't merged yet (gates its siblings). */
+  private pendingScaffold(appId: string, exceptCardId: string): CardRecord | undefined {
+    return [...this.cards.values()].find((c) => c.appId === appId && c.scaffold && c.id !== exceptCardId && c.status !== 'merged')
+  }
+
   /** Dispatch a card: build now if a slot is free, otherwise queue it (spec §5–§6). */
   async dispatch(req: DispatchRequest): Promise<DispatchResult> {
     const app = this.appById(req.appId)
@@ -488,6 +500,26 @@ export class RunManager {
     const agentId = req.agentId ?? app.agent ?? 'codex'
     const card = this.cards.get(req.cardId)
     const model = req.model ?? card?.model
+
+    // Scaffold gate: hold non-scaffold cards until the foundation card has merged,
+    // so a brand-new (empty) repo isn't scaffolded three different ways at once.
+    if (card && !card.scaffold) {
+      const scaffold = this.pendingScaffold(req.appId, req.cardId)
+      if (scaffold) {
+        card.blocked = true
+        card.status = 'ready'
+        card.runId = undefined
+        card.queued = false
+        card.updatedAt = Date.now()
+        this.persist()
+        bus.publish({ type: 'card.update', card })
+        // Make sure the scaffold is actually on its way (start it if it's idle).
+        if (scaffold.status === 'ideas' || scaffold.status === 'ready') {
+          void this.dispatch({ appId: scaffold.appId, cardId: scaffold.id, prompt: scaffold.prompt, type: scaffold.type, title: scaffold.title, baseBranch: scaffold.base, model: scaffold.model })
+        }
+        return { blocked: true, scaffoldTitle: scaffold.title }
+      }
+    }
 
     // At capacity → queue the card (no run yet) and surface it on the board.
     if (this.activeCount() >= loadConfig().concurrency) {
@@ -530,6 +562,22 @@ export class RunManager {
     this.persist()
     this.emitQueue()
     return r
+  }
+
+  /** A scaffold card merged → release its blocked siblings, building them on top of it. */
+  private releaseBlocked(appId: string, scaffoldBranch: string): void {
+    const blocked = [...this.cards.values()].filter((c) => c.appId === appId && c.blocked)
+    if (!blocked.length) return
+    bus.publish({ type: 'notice', level: 'info', message: `Scaffold merged — building ${blocked.length} card${blocked.length > 1 ? 's' : ''} on top of it.`, appId })
+    for (const c of blocked) {
+      c.blocked = false
+      // Branch off the scaffold so each card starts from the project skeleton.
+      c.base = scaffoldBranch
+      c.updatedAt = Date.now()
+      bus.publish({ type: 'card.update', card: c })
+      void this.dispatch({ appId, cardId: c.id, prompt: c.prompt, type: c.type, title: c.title, baseBranch: scaffoldBranch, model: c.model })
+    }
+    this.persist()
   }
 
   /** Dispatch (or queue) every Ready card in an app — the bulk "Build all" action. */
@@ -624,6 +672,11 @@ export class RunManager {
   /** Race: build the same card with every installed agent in parallel worktrees. */
   async race(req: DispatchRequest, agentIds: CodingAgentId[]): Promise<{ runIds: string[] }> {
     if (agentIds.length < 2) throw new Error('need at least two agents to race')
+    const raceCard = this.cards.get(req.cardId)
+    if (raceCard && !raceCard.scaffold) {
+      const scaffold = this.pendingScaffold(req.appId, req.cardId)
+      if (scaffold) throw new Error(`build the scaffold card "${scaffold.title}" first — it must merge before others can build`)
+    }
     const runs: RunRecord[] = []
     for (const a of agentIds) runs.push(await this.createRun(req, a, true))
     const card = this.cards.get(req.cardId)
@@ -843,6 +896,9 @@ export class RunManager {
     bus.publish({ type: 'run.status', runId: id, status: 'merged' })
     this.syncCardFromRun(r)
     this.persist()
+    // If this was the scaffold, the foundation now exists — release its siblings.
+    const mergedCard = [...this.cards.values()].find((c) => c.runId === id) ?? this.cards.get(r.cardId)
+    if (mergedCard?.scaffold) this.releaseBlocked(mergedCard.appId, r.branch)
     void this.pump()
     return r
   }
@@ -895,18 +951,20 @@ export class RunManager {
 
   /** Decompose a big idea into scoped sub-cards (async; results arrive via WS).
    *  Returns once the read-only agent run has been kicked off. */
-  async decompose(cardId: string): Promise<void> {
+  async decompose(cardId: string, count?: number): Promise<void> {
     const card = this.cards.get(cardId)
     if (!card) throw new Error('unknown card')
     const app = this.appById(card.appId)
     if (!app) throw new Error('unknown app')
     if (!existsSync(app.localPath)) throw new Error('clone the repo before splitting ideas')
     const agentId = app.agent ?? 'codex'
+    // An explicit count (2–8) overrides the agent's own judgement.
+    const n = count && count >= 2 && count <= 8 ? Math.floor(count) : undefined
     const idea = [card.title, card.desc, card.prompt].map((s) => (s || '').trim()).filter(Boolean).join('\n\n')
     const prompt =
       `You are breaking a large product idea into smaller, independently-shippable cards for a kanban board.\n\n` +
       `IDEA:\n${idea}\n\n` +
-      `Respond with ONLY a JSON array (no markdown fences, no prose) of 2 to 5 objects. Each object has:\n` +
+      `Respond with ONLY a JSON array (no markdown fences, no prose) of ${n ? `exactly ${n}` : '2 to 5'} objects. Each object has:\n` +
       `- "title": a short imperative title for the card\n` +
       `- "type": "feature" | "bug" | "enhancement"\n` +
       `- "prompt": a user story followed by BDD acceptance criteria, written EXACTLY in this shape:\n` +
@@ -916,7 +974,7 @@ export class RunManager {
 
     this.runOneshot(app.localPath, agentId, prompt)
       .then(({ text }) => {
-        const specs = parseDecompose(text)
+        const specs = parseDecompose(text, n ?? 8)
         if (!specs.length) {
           bus.publish({ type: 'notice', level: 'error', message: `Couldn't split "${card.title}" — the agent didn't return a usable breakdown.`, appId: card.appId, cardId: card.id })
           return

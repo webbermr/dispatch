@@ -3,8 +3,60 @@ import { agent, type ChecksResult } from '../../lib/agentClient'
 import { agentLabel } from '../../lib/constants'
 import { diffStats } from '../../lib/helpers'
 import { useStore } from '../../store/useStore'
-import type { Card } from '../../store/types'
+import type { Card, DiffFile } from '../../store/types'
+import { DiffView } from './DiffView'
 import { RunHistory } from './RunHistory'
+
+/** Collapsible "what was implemented" — shows the merged card's diff. */
+function ViewChanges({ card }: { card: Card }) {
+  const live = useStore((s) => s.live)
+  const [open, setOpen] = useState(false)
+  const [diff, setDiff] = useState<DiffFile[] | null>(card.diff?.length ? card.diff : null)
+  const [loading, setLoading] = useState(false)
+  const stats = diffStats(diff ?? card.diff ?? [])
+
+  const toggle = () => {
+    const next = !open
+    setOpen(next)
+    // Lazily fetch the diff from the run if we don't already have it.
+    if (next && !diff?.length && live && card.runId) {
+      setLoading(true)
+      agent
+        .getRun(card.runId)
+        .then((r) => setDiff(r.diff))
+        .catch(() => {})
+        .finally(() => setLoading(false))
+    }
+  }
+
+  return (
+    <div style={{ width: '100%', textAlign: 'left', borderTop: '1px solid var(--border-subtle)', paddingTop: 14, marginTop: 4 }}>
+      <button
+        onClick={toggle}
+        style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+      >
+        <span style={{ fontSize: 11, transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .15s', color: 'var(--text-muted)' }}>▶</span>
+        <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 13, color: 'var(--text-strong)' }}>📄 View changes</span>
+        {(diff ?? card.diff)?.length ? (
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, color: 'var(--text-muted)' }}>
+            {stats.files} files · <span style={{ color: 'var(--status-success)' }}>+{stats.add}</span> <span style={{ color: 'var(--status-danger)' }}>−{stats.del}</span>
+          </span>
+        ) : null}
+      </button>
+      {open && (
+        <div style={{ marginTop: 8 }}>
+          {loading && !diff ? (
+            <div style={{ fontSize: 12.5, color: 'var(--text-subtle)' }}>Loading the diff…</div>
+          ) : diff?.length ? (
+            <DiffView diff={diff} />
+          ) : (
+            <div style={{ fontSize: 12.5, color: 'var(--text-subtle)' }}>No diff was recorded for this build{card.prUrl ? ' — view it on the pull request.' : '.'}</div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
 
 const CI_STYLE: Record<string, { dot: string; label: string }> = {
   success: { dot: 'var(--status-success)', label: 'All checks passed' },
@@ -150,6 +202,8 @@ export function MergedDetail({ card }: { card: Card }) {
         {card.mergedAt || ''}
         {card.agentId ? ` · built by ${agentLabel(card.agentId)}` : ''}
       </div>
+
+      {live && <ViewChanges card={card} />}
 
       {live && isPr && card.runId && (
         <div style={{ marginTop: 6, paddingTop: 16, borderTop: '1px solid var(--border-subtle)', width: '100%' }}>

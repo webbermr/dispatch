@@ -49,7 +49,7 @@ export function StatsModal() {
   const head = { ...cell, fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 11, letterSpacing: '.05em', textTransform: 'uppercase', color: 'var(--text-subtle)' } as const
 
   return (
-    <div onClick={() => setStatsOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(11,35,56,.6)', zIndex: 1200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, backdropFilter: 'blur(2px)' }}>
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(11,35,56,.6)', zIndex: 1200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, backdropFilter: 'blur(2px)' }}>
       <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 540, background: '#fff', borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-xl)', overflow: 'hidden', animation: 'dpfade .2s', borderTop: '4px solid var(--brand-primary)' }}>
         <div style={{ padding: '22px 24px 18px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 11, marginBottom: 6 }}>

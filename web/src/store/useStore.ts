@@ -3,7 +3,6 @@ import { agent, AgentError, type AgentCard, type AgentRun, type ServerEvent } fr
 import { currentStepLabel, mapApp, mapCard, runStatusToCard } from '../lib/agentMap'
 import { EXAMPLE_DESC, EXAMPLE_PROMPT } from '../lib/constants'
 import { branchSlug } from '../lib/helpers'
-import { seedApps, seedCards } from './seed'
 import type {
   AgentStatus,
   App,
@@ -103,7 +102,7 @@ interface DispatchState {
 
   openAddApp: () => void
   closeAddApp: () => void
-  addApp: (localPath: string, name: string) => Promise<string | null>
+  addApp: (localPath: string, name: string, repoMode?: 'local' | 'remote') => Promise<string | null>
   cloneAndAddApp: (repoUrl: string, parentDir: string, name: string) => Promise<string | null>
   removeApp: (id: string) => void
   setAppMergeMode: (id: string, mode: 'pr' | 'merge') => void
@@ -112,11 +111,12 @@ interface DispatchState {
   setAppPlanFirst: (id: string, on: boolean) => void
   setAppAutoRetry: (id: string, on: boolean) => void
   setAppPreviewCommand: (id: string, cmd: string) => void
+  setAppRepoMode: (id: string, mode: 'local' | 'remote') => void
   generateAgentsMd: (id: string) => void
 
   // ---- queue / model / decompose ----
   setCardModel: (id: string, model: string) => void
-  decomposeCard: (id: string) => void
+  decomposeCard: (id: string, count?: number) => void
   buildAllReady: () => void
   cancelQueued: (id: string) => void
 
@@ -132,6 +132,16 @@ interface DispatchState {
   toggleNotify: () => void
   statsOpen: boolean
   setStatsOpen: (open: boolean) => void
+
+  // ---- AI app builder ----
+  builderOpen: boolean
+  openBuilder: () => void
+  closeBuilder: () => void
+  /** Create the repo (local / new-remote / clone) + the plan's cards, then open it. */
+  createAppFromPlan: (
+    plan: import('../lib/agentClient').BuilderPlan,
+    choice: { mode: 'local' | 'new-remote' | 'clone'; parentDir: string; name: string; slug: string; private?: boolean; repoUrl?: string },
+  ) => Promise<boolean>
 
   // ---- repo Q&A chat ----
   repoChatOpen: boolean
@@ -499,6 +509,11 @@ export const useStore = create<DispatchState>((set, get) => {
     try {
       const res = await agent.dispatch({ appId: c.appId, cardId: c.id, prompt: c.prompt ?? '', type: c.type, baseBranch: c.base || app(c.appId)?.base, title: c.title, model: c.model })
       set({ draggingId: null })
+      if ('blocked' in res) {
+        updateCard(id, (cc) => ({ ...cc, blocked: true, status: 'ready' }))
+        toast(`Waiting on the scaffold "${res.scaffoldTitle}" to merge first`)
+        return
+      }
       if ('queued' in res) {
         updateCard(id, (cc) => ({ ...cc, queued: true, status: 'ready' }))
         toast('At capacity — card queued')
@@ -520,9 +535,9 @@ export const useStore = create<DispatchState>((set, get) => {
     detailTab: 'diff',
     draggingId: null,
 
-    apps: seedApps,
-    // Give seed cards a descending order so they keep their listed order (top → bottom).
-    cards: seedCards().map((c, i) => ({ ...c, order: -i })),
+    // No demo data — the board is empty until a machine is connected and a repo added.
+    apps: [],
+    cards: [],
 
     agentPresent: false,
     live: false,
@@ -543,6 +558,7 @@ export const useStore = create<DispatchState>((set, get) => {
     repoChatOpen: false,
     repoChats: {},
     repoChatDraft: '',
+    builderOpen: false,
 
     cloneModal: null,
     confirm: null,
@@ -785,11 +801,11 @@ export const useStore = create<DispatchState>((set, get) => {
       set({ addAppOpen: true })
     },
     closeAddApp: () => set({ addAppOpen: false }),
-    addApp: async (localPath, name) => {
+    addApp: async (localPath, name, repoMode) => {
       const path = localPath.trim()
       if (!path) return null
       try {
-        const a = await agent.registerApp({ localPath: path, name: name.trim() || undefined })
+        const a = await agent.registerApp({ localPath: path, name: name.trim() || undefined, repoMode })
         set((s) => ({ apps: s.apps.some((x) => x.id === a.id) ? s.apps : [...s.apps, mapApp(a, s.apps.length)], addAppOpen: false }))
         toast(`Added ${a.name}`)
         return a.id
@@ -845,6 +861,12 @@ export const useStore = create<DispatchState>((set, get) => {
       set((s) => ({ apps: s.apps.map((a) => (a.id === id ? { ...a, previewCommand: cmd } : a)) }))
       if (get().live) agent.updateApp(id, { previewCommand: cmd }).catch((err) => toast(`Couldn't update: ${(err as Error).message}`))
     },
+    setAppRepoMode: (id, mode) => {
+      // Switching also flips the default merge behavior (remote → PR, local → merge).
+      set((s) => ({ apps: s.apps.map((a) => (a.id === id ? { ...a, repoMode: mode, mergeStrategy: mode === 'remote' ? 'pr' : 'merge' } : a)) }))
+      if (get().live) agent.updateApp(id, { repoMode: mode }).catch((err) => toast(`Couldn't update: ${(err as Error).message}`))
+      toast(mode === 'remote' ? 'Repo set to Remote — builds open PRs' : 'Repo set to Local — builds merge locally')
+    },
     setAppAutoRetry: (id, on) => {
       set((s) => ({ apps: s.apps.map((a) => (a.id === id ? { ...a, autoRetry: on } : a)) }))
       if (get().live) agent.updateApp(id, { autoRetry: on }).catch((err) => toast(`Couldn't update: ${(err as Error).message}`))
@@ -896,7 +918,7 @@ export const useStore = create<DispatchState>((set, get) => {
       updateCard(id, (c) => ({ ...c, model }))
       if (get().live) agent.patchCard(id, { model }).catch(() => {})
     },
-    decomposeCard: (id) => {
+    decomposeCard: (id, count) => {
       const c = card(id)
       if (!c) return
       if (!get().live) {
@@ -910,10 +932,10 @@ export const useStore = create<DispatchState>((set, get) => {
       }
       const stop = () => set((s) => ({ decomposing: s.decomposing.filter((x) => x !== id) }))
       set((s) => ({ decomposing: s.decomposing.includes(id) ? s.decomposing : [...s.decomposing, id] }))
-      toast('Splitting this idea into cards…')
+      toast(count ? `Splitting into ${count} cards…` : 'Splitting this idea into cards…')
       // Safety net in case the completion notice never arrives.
       const guard = setTimeout(stop, 120000)
-      agent.decompose(id).catch((err) => {
+      agent.decompose(id, count).catch((err) => {
         clearTimeout(guard)
         stop()
         toast(`Decompose failed: ${(err as Error).message}`)
@@ -1008,6 +1030,38 @@ export const useStore = create<DispatchState>((set, get) => {
       else Notification.requestPermission().then((p) => (p === 'granted' ? enable() : toast('Notification permission denied')))
     },
     setStatsOpen: (open) => set({ statsOpen: open }),
+
+    // ---- AI app builder ----
+    openBuilder: () => {
+      if (!get().live) {
+        set({ connectOpen: true })
+        toast('Connect your machine to build an app with AI')
+        return
+      }
+      set({ builderOpen: true })
+    },
+    closeBuilder: () => set({ builderOpen: false }),
+    createAppFromPlan: async (plan, choice) => {
+      try {
+        let a
+        if (choice.mode === 'local') a = await agent.initLocalRepo({ parentDir: choice.parentDir, slug: choice.slug, name: choice.name })
+        else if (choice.mode === 'new-remote') a = await agent.createRemoteRepo({ parentDir: choice.parentDir, slug: choice.slug, name: choice.name, private: choice.private })
+        else a = await agent.cloneNewRepo({ repoUrl: choice.repoUrl ?? '', parentDir: choice.parentDir, name: choice.name })
+        // Add the new repo to the board.
+        set((s) => ({ apps: s.apps.some((x) => x.id === a.id) ? s.apps : [...s.apps, mapApp(a, s.apps.length)] }))
+        // Create the first-iteration cards (the desc carries the title; prompt is the user story).
+        for (const c of plan.cards) {
+          await agent.createCard({ appId: a.id, title: c.title, prompt: c.prompt, desc: c.title, type: c.type, scaffold: c.scaffold }).catch(() => {})
+        }
+        set({ builderOpen: false })
+        get().openApp(a.id)
+        toast(`Created ${a.name} with ${plan.cards.length} cards`)
+        return true
+      } catch (err) {
+        toast(`Create failed: ${(err as Error).message}`)
+        return false
+      }
+    },
 
     // ---- repo Q&A chat ----
     openRepoChat: () => {

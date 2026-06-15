@@ -17,7 +17,7 @@ export function cardsRouter(): Router {
 
   // POST /cards — create a backlog card.
   r.post('/cards', (req, res) => {
-    const { appId, type, priority, title, desc, prompt } = req.body ?? {}
+    const { appId, type, priority, title, desc, prompt, scaffold } = req.body ?? {}
     if (!appId) return res.status(400).json({ error: 'appId is required' })
     if (!loadConfig().apps.some((a) => a.id === appId)) return res.status(400).json({ error: 'unknown app' })
     const card = runManager.createCard({
@@ -27,14 +27,16 @@ export function cardsRouter(): Router {
       title,
       desc,
       prompt,
+      scaffold: scaffold === true,
     })
     res.status(201).json(card)
   })
 
   // PATCH /cards/:id — edit fields or move between non-build columns.
   r.patch('/cards/:id', (req, res) => {
-    const { title, desc, prompt, type, priority, status, base, order, model } = req.body ?? {}
+    const { title, desc, prompt, type, priority, status, base, order, model, scaffold } = req.body ?? {}
     const patch: Record<string, unknown> = {}
+    if (typeof scaffold === 'boolean') patch.scaffold = scaffold || undefined
     if (typeof title === 'string') patch.title = title
     if (typeof desc === 'string') patch.desc = desc
     if (typeof prompt === 'string') patch.prompt = prompt
@@ -64,8 +66,9 @@ export function cardsRouter(): Router {
 
   // POST /cards/:id/decompose — AI-split a big idea into scoped sub-cards (async).
   r.post('/cards/:id/decompose', async (req, res) => {
+    const count = Number(req.body?.count)
     try {
-      await runManager.decompose(req.params.id)
+      await runManager.decompose(req.params.id, Number.isFinite(count) ? count : undefined)
       res.status(202).json({ ok: true })
     } catch (err) {
       res.status(400).json({ error: (err as Error).message })

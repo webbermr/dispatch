@@ -56,6 +56,7 @@ export function PlanDetail({ card }: { card: Card }) {
   const queue = useStore((s) => s.queue)
   const live = useStore((s) => s.live)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [splitCount, setSplitCount] = useState(0) // 0 = let the agent decide
   const app = apps.find((a) => a.id === card.appId)
   if (!app) return null
   const installedAgents = (health?.agents ?? []).filter((a) => a.installed).length
@@ -230,16 +231,32 @@ export function PlanDetail({ card }: { card: Card }) {
               Save
             </Button>
             {live && (
-              <Button variant="secondary" onClick={() => decomposeCard(card.id)} disabled={decomposing} style={{ color: 'var(--color-purple-dark)' }}>
-                {decomposing ? (
-                  <>
-                    <span style={{ display: 'inline-block', width: 12, height: 12, borderRadius: '50%', border: '2px solid var(--neutral-200)', borderTopColor: 'var(--color-purple-dark)', animation: 'dpspin .7s linear infinite' }} />
-                    Splitting…
-                  </>
-                ) : (
-                  '✂ Split into cards'
-                )}
-              </Button>
+              <>
+                <Button variant="secondary" onClick={() => decomposeCard(card.id, splitCount || undefined)} disabled={decomposing} style={{ color: 'var(--color-purple-dark)' }}>
+                  {decomposing ? (
+                    <>
+                      <span style={{ display: 'inline-block', width: 12, height: 12, borderRadius: '50%', border: '2px solid var(--neutral-200)', borderTopColor: 'var(--color-purple-dark)', animation: 'dpspin .7s linear infinite' }} />
+                      Splitting…
+                    </>
+                  ) : (
+                    '✂ Split into cards'
+                  )}
+                </Button>
+                <select
+                  value={splitCount}
+                  onChange={(e) => setSplitCount(Number(e.target.value))}
+                  disabled={decomposing}
+                  title="How many cards to split into"
+                  style={{ height: 40, padding: '0 8px', border: '1px solid var(--border-default)', borderRadius: 'var(--radius-sm)', background: '#fff', fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 13, color: 'var(--text-body)', cursor: 'pointer' }}
+                >
+                  <option value={0}>Auto</option>
+                  {[2, 3, 4, 5, 6, 7, 8].map((n) => (
+                    <option key={n} value={n}>
+                      {n} cards
+                    </option>
+                  ))}
+                </select>
+              </>
             )}
           </>
         ) : card.queued ? null : (

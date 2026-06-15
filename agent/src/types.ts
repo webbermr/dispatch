@@ -61,6 +61,8 @@ export interface AppRecord {
   buildLocation?: BuildLocation
   /** Which AI coding CLI builds cards for this repo (default: codex). */
   agent?: CodingAgentId
+  /** Whether this repo is backed by a git host (remote) or kept local-only. */
+  repoMode?: 'local' | 'remote'
   /** When true, the agent proposes a plan to approve before it edits code. */
   planFirst?: boolean
   /** When true, a failed build automatically retries (fallback agent / fresh attempt). */
@@ -149,6 +151,10 @@ export interface CardRecord {
   queued?: boolean
   /** If this card was split off a larger idea, the id of the parent card. */
   parentId?: string
+  /** A foundation card that must build + merge before its siblings (new-app scaffold). */
+  scaffold?: boolean
+  /** Held: dispatch is waiting on the app's scaffold card to merge first. */
+  blocked?: boolean
   runId?: string
   branch?: string
   mergedAt?: string
@@ -174,6 +180,22 @@ export interface RepoChatRecord {
   appId: string
   sessionId?: string
   messages: ChatMessage[]
+}
+
+/** A first-iteration spec produced by the AI app-builder interview. */
+export interface BuilderCard {
+  title: string
+  type: CardType
+  prompt: string
+  /** The one foundation card that scaffolds the project (builds + merges first). */
+  scaffold?: boolean
+}
+
+export interface BuilderPlan {
+  name: string
+  summary: string
+  repoSlug: string
+  cards: BuilderCard[]
 }
 
 // ---- Persisted config (~/.dispatch/config.json) ----

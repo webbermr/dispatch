@@ -85,7 +85,6 @@ export function CardDrawer() {
 
   return (
     <div
-      onClick={closeCard}
       style={{
         position: 'fixed',
         inset: 0,

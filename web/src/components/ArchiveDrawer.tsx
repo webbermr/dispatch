@@ -19,7 +19,7 @@ export function ArchiveDrawer() {
     .sort((a, b) => (b.archivedAt ?? 0) - (a.archivedAt ?? 0))
 
   return (
-    <div onClick={() => setArchiveOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(11,35,56,.5)', zIndex: 1180, display: 'flex', justifyContent: 'flex-end', backdropFilter: 'blur(2px)' }}>
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(11,35,56,.5)', zIndex: 1180, display: 'flex', justifyContent: 'flex-end', backdropFilter: 'blur(2px)' }}>
       <div
         onClick={(e) => e.stopPropagation()}
         style={{ width: 'min(440px, 92vw)', height: '100%', background: '#fff', boxShadow: 'var(--shadow-xl)', display: 'flex', flexDirection: 'column', animation: 'dpslide .2s' }}

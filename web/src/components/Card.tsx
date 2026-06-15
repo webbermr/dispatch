@@ -148,6 +148,50 @@ export function Card({ card }: { card: CardModel }) {
         >
           {t.label}
         </span>
+        {card.scaffold && (
+          <span
+            title="Scaffold — builds and merges first; other cards build on top of it"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 4,
+              height: 20,
+              padding: '0 7px',
+              borderRadius: 'var(--radius-xs)',
+              background: 'var(--brand-primary-surface, #E1EEF6)',
+              color: 'var(--brand-primary)',
+              fontFamily: 'var(--font-heading)',
+              fontWeight: 700,
+              fontSize: 10,
+              letterSpacing: '.05em',
+              textTransform: 'uppercase',
+            }}
+          >
+            🏗 Scaffold
+          </span>
+        )}
+        {card.blocked && (
+          <span
+            title="Waiting on the scaffold card to merge first"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 4,
+              height: 20,
+              padding: '0 7px',
+              borderRadius: 'var(--radius-xs)',
+              background: 'var(--neutral-100)',
+              color: 'var(--text-muted)',
+              fontFamily: 'var(--font-heading)',
+              fontWeight: 700,
+              fontSize: 10,
+              letterSpacing: '.05em',
+              textTransform: 'uppercase',
+            }}
+          >
+            ⏳ Waiting on scaffold
+          </span>
+        )}
         {card.queued && (
           <span
             title="Queued — waiting for a free build slot"

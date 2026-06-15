@@ -77,7 +77,6 @@ export function ConnectModal() {
 
   return (
     <div
-      onClick={closeConnect}
       style={{
         position: 'fixed',
         inset: 0,

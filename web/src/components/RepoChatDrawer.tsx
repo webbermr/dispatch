@@ -59,7 +59,7 @@ export function RepoChatDrawer() {
   const titleFor = (i: number) => (messages[i - 1]?.role === 'user' ? messages[i - 1].text : messages[i].text.split('\n')[0])
 
   return (
-    <div onClick={closeRepoChat} style={{ position: 'fixed', inset: 0, background: 'rgba(11,35,56,.5)', zIndex: 1180, display: 'flex', justifyContent: 'flex-end', backdropFilter: 'blur(2px)' }}>
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(11,35,56,.5)', zIndex: 1180, display: 'flex', justifyContent: 'flex-end', backdropFilter: 'blur(2px)' }}>
       <div onClick={(e) => e.stopPropagation()} style={{ width: 'min(480px, 94vw)', height: '100%', background: '#fff', boxShadow: 'var(--shadow-xl)', display: 'flex', flexDirection: 'column', animation: 'dpslide .2s' }}>
         <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', gap: 10 }}>
           <span style={{ fontSize: 18 }}>💬</span>

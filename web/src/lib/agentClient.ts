@@ -45,6 +45,7 @@ export interface AgentApp {
   planFirst?: boolean
   autoRetry?: boolean
   previewCommand?: string
+  repoMode?: 'local' | 'remote'
   cloned: boolean
   clean: boolean
   currentBranch: string | null
@@ -71,6 +72,8 @@ export interface AgentCard {
   order?: number
   queued?: boolean
   parentId?: string
+  scaffold?: boolean
+  blocked?: boolean
   archived?: boolean
   archivedAt?: number
   raceRunIds?: string[]
@@ -159,6 +162,20 @@ export interface MetricsResult {
   byAgent: AgentMetricRow[]
 }
 
+export interface BuilderCard {
+  title: string
+  type: CardType
+  prompt: string
+  scaffold?: boolean
+}
+
+export interface BuilderPlan {
+  name: string
+  summary: string
+  repoSlug: string
+  cards: BuilderCard[]
+}
+
 export type ServerEvent =
   | { type: 'run.step'; runId: string; step: string; state: 'pending' | 'active' | 'done' }
   | { type: 'run.log'; runId: string; line: string; stream: 'stdout' | 'stderr' }
@@ -241,11 +258,26 @@ export class AgentClient {
   getApp(id: string): Promise<AgentApp> {
     return this.req(`/apps/${id}`)
   }
-  registerApp(input: { localPath: string; name?: string }): Promise<AgentApp> {
+  registerApp(input: { localPath: string; name?: string; repoMode?: 'local' | 'remote' }): Promise<AgentApp> {
     return this.req('/apps', { method: 'POST', body: JSON.stringify(input) })
   }
   cloneNewRepo(input: { repoUrl: string; parentDir: string; name?: string }): Promise<AgentApp> {
     return this.req('/apps/clone-url', { method: 'POST', body: JSON.stringify(input) })
+  }
+  initLocalRepo(input: { parentDir: string; slug: string; name?: string }): Promise<AgentApp> {
+    return this.req('/apps/init-local', { method: 'POST', body: JSON.stringify(input) })
+  }
+  createRemoteRepo(input: { parentDir: string; slug: string; name?: string; private?: boolean }): Promise<AgentApp> {
+    return this.req('/apps/create-remote', { method: 'POST', body: JSON.stringify(input) })
+  }
+  builderStart(): Promise<{ id: string; message: string }> {
+    return this.req('/builder/start', { method: 'POST' })
+  }
+  builderMessage(id: string, text: string): Promise<{ message: string }> {
+    return this.req(`/builder/${id}/message`, { method: 'POST', body: JSON.stringify({ text }) })
+  }
+  builderPlan(id: string): Promise<BuilderPlan> {
+    return this.req(`/builder/${id}/plan`, { method: 'POST' })
   }
   generateAgentsMd(id: string, force = false): Promise<{ path: string; bytes: number; overwritten: boolean }> {
     return this.req(`/apps/${id}/agents-md`, { method: 'POST', body: JSON.stringify({ force }) })
@@ -265,7 +297,7 @@ export class AgentClient {
   removeApp(id: string): Promise<void> {
     return this.req(`/apps/${id}`, { method: 'DELETE' })
   }
-  updateApp(id: string, patch: { mergeStrategy?: MergeStrategy; buildLocation?: BuildLocation; agent?: CodingAgentId; planFirst?: boolean; autoRetry?: boolean; previewCommand?: string; name?: string }): Promise<AgentApp> {
+  updateApp(id: string, patch: { mergeStrategy?: MergeStrategy; buildLocation?: BuildLocation; agent?: CodingAgentId; planFirst?: boolean; autoRetry?: boolean; previewCommand?: string; repoMode?: 'local' | 'remote'; name?: string }): Promise<AgentApp> {
     return this.req(`/apps/${id}`, { method: 'PATCH', body: JSON.stringify(patch) })
   }
   clone(id: string): Promise<AgentApp> {
@@ -314,7 +346,7 @@ export class AgentClient {
   checks(id: string): Promise<ChecksResult> {
     return this.req(`/runs/${id}/checks`)
   }
-  dispatch(body: { appId: string; cardId: string; prompt: string; type: CardType; baseBranch?: string; title?: string; model?: string }): Promise<{ runId: string; branch: string; agentId: CodingAgentId } | { queued: true; agentId: CodingAgentId }> {
+  dispatch(body: { appId: string; cardId: string; prompt: string; type: CardType; baseBranch?: string; title?: string; model?: string }): Promise<{ runId: string; branch: string; agentId: CodingAgentId } | { queued: true; agentId: CodingAgentId } | { blocked: true; scaffoldTitle: string }> {
     return this.req('/runs', { method: 'POST', body: JSON.stringify(body) })
   }
   dispatchReady(appId: string): Promise<{ started: number; queued: number }> {
@@ -323,8 +355,8 @@ export class AgentClient {
   queue(): Promise<{ concurrency: number; active: number; queued: number }> {
     return this.req('/queue')
   }
-  decompose(cardId: string): Promise<{ ok: boolean }> {
-    return this.req(`/cards/${cardId}/decompose`, { method: 'POST' })
+  decompose(cardId: string, count?: number): Promise<{ ok: boolean }> {
+    return this.req(`/cards/${cardId}/decompose`, { method: 'POST', body: JSON.stringify({ count }) })
   }
   dequeue(cardId: string): Promise<AgentCard> {
     return this.req(`/cards/${cardId}/dequeue`, { method: 'POST' })

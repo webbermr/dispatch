@@ -9,6 +9,7 @@ import { log } from './lib/log.js'
 import { allowedOrigins, requireAuth } from './lib/security.js'
 import type { PairingManager } from './pairing.js'
 import { appsRouter } from './routes/apps.js'
+import { builderRouter } from './routes/builder.js'
 import { cardsRouter } from './routes/cards.js'
 import { healthRouter } from './routes/health.js'
 import { pairRouter } from './routes/pair.js'
@@ -44,13 +45,14 @@ export function buildServer(pairing: PairingManager): Server {
   // The API surface requires a paired token. Scope auth to these prefixes only,
   // so it never intercepts the static bundle / SPA routes (which fall through
   // to express.static below).
-  const API_PREFIXES = ['/apps', '/cards', '/runs']
+  const API_PREFIXES = ['/apps', '/cards', '/runs', '/builder']
   const auth = requireAuth(pairing)
   app.use((req, res, next) => {
     if (API_PREFIXES.some((p) => req.path === p || req.path.startsWith(p + '/'))) return auth(req, res, next)
     next()
   })
   app.use('/', appsRouter())
+  app.use('/', builderRouter())
   app.use('/', cardsRouter())
   app.use('/', runsRouter())
 

@@ -9,6 +9,8 @@ export interface RegisterInput {
   name?: string
   repoSlug?: string
   defaultBranch?: string
+  /** Explicit Local/Remote classification; defaults to remote when an origin exists. */
+  repoMode?: 'local' | 'remote'
 }
 
 /**
@@ -33,6 +35,8 @@ export async function registerRepo(input: RegisterInput): Promise<AppRecord> {
     repoSlug = remote.code === 0 ? (remote.stdout.trim().match(/[:/]([^/]+\/[^/]+?)(?:\.git)?$/)?.[1] ?? '') : ''
   }
   const defaultBranch = input.defaultBranch || (await defaultBranchOf(localPath))
+  // Remote by default when a git host is present; the user can override either way.
+  const repoMode: 'local' | 'remote' = input.repoMode ?? (repoSlug ? 'remote' : 'local')
 
   const app: AppRecord = {
     id: `a_${Date.now().toString(36)}`,
@@ -40,8 +44,9 @@ export async function registerRepo(input: RegisterInput): Promise<AppRecord> {
     localPath,
     repoSlug,
     defaultBranch,
-    // Default to opening PRs when the repo has a remote; otherwise merge locally.
-    mergeStrategy: repoSlug ? 'pr' : 'merge',
+    repoMode,
+    // Remote repos open PRs by default; local-only repos merge in place.
+    mergeStrategy: repoMode === 'remote' ? 'pr' : 'merge',
     buildLocation: 'worktree',
     agent: 'codex',
   }

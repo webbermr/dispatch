@@ -88,6 +88,7 @@ export function AddAppModal() {
   const [mode, setMode] = useState<'local' | 'clone'>('local')
   const [path, setPath] = useState('')
   const [name, setName] = useState('')
+  const [localRepoMode, setLocalRepoMode] = useState<'remote' | 'local'>('remote')
   const [repoUrl, setRepoUrl] = useState('')
   const [parentDir, setParentDir] = useState('~/code')
   const [busy, setBusy] = useState(false)
@@ -121,7 +122,7 @@ export function AddAppModal() {
   const submit = async () => {
     if (!path.trim() || busy) return
     setBusy(true)
-    const id = await addApp(path, name)
+    const id = await addApp(path, name, localRepoMode)
     setBusy(false)
     if (id) reset()
   }
@@ -157,7 +158,6 @@ export function AddAppModal() {
 
   return (
     <div
-      onClick={closeAddApp}
       style={{ position: 'fixed', inset: 0, background: 'rgba(11,35,56,.6)', zIndex: 1150, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, backdropFilter: 'blur(2px)' }}
     >
       <div
@@ -191,6 +191,34 @@ export function AddAppModal() {
               />
               <label style={labelStyle}>Name (optional)</label>
               <input value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && submit()} placeholder="Defaults to the folder name" style={inputStyle} />
+
+              <label style={{ ...labelStyle, marginTop: 14 }}>Repo type</label>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {(['remote', 'local'] as const).map((m) => (
+                  <button
+                    key={m}
+                    onClick={() => setLocalRepoMode(m)}
+                    style={{
+                      flex: 1,
+                      height: 38,
+                      border: `1px solid ${localRepoMode === m ? 'var(--brand-primary)' : 'var(--border-default)'}`,
+                      borderRadius: 'var(--radius-sm)',
+                      background: localRepoMode === m ? 'var(--brand-primary)' : '#fff',
+                      color: localRepoMode === m ? '#fff' : 'var(--text-body)',
+                      cursor: 'pointer',
+                      fontFamily: 'var(--font-heading)',
+                      fontWeight: 700,
+                      fontSize: 13,
+                    }}
+                  >
+                    {m === 'remote' ? '🌐 Remote' : '💻 Local'}
+                  </button>
+                ))}
+              </div>
+              <p style={{ fontSize: 12, color: 'var(--text-subtle)', margin: '6px 0 0', lineHeight: 1.45 }}>
+                {localRepoMode === 'remote' ? 'Backed by a git host — builds open pull requests by default.' : 'Local-only — builds merge into your local branch (no push/PR).'}
+              </p>
+
               <div style={{ marginTop: 14 }}>
                 <Button variant="secondary" onClick={check} disabled={!path.trim() || checking} style={{ height: 34, fontSize: 13 }}>
                   {checking ? 'Checking…' : 'Check connection'}

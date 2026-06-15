@@ -1,11 +1,12 @@
 import { Router } from 'express'
-import { existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { loadConfig, saveConfig } from '../config.js'
 import { diagnoseRepo } from '../lib/diagnostics.js'
 import { aheadBehind, clone, cloneUrl, currentBranch, getRemoteUrl, isClean, isGitRepo, listBranches, parseCloneTarget, run } from '../lib/git.js'
 import { forgeOfUrl } from '../lib/forge.js'
+import { ghAuthed, ghCreateRepo, ghInstalled } from '../lib/gh.js'
 import { bus } from '../lib/events.js'
 import { isPathContained } from '../lib/paths.js'
 import { log } from '../lib/log.js'
@@ -13,6 +14,27 @@ import { registerRepo } from '../lib/registry.js'
 import { repoChat } from '../repoChat.js'
 import { runManager } from '../runManager.js'
 import type { AppRecord, AppStatus } from '../types.js'
+
+function slugify(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60) || 'new-app'
+}
+
+function expandDir(dir: string): string {
+  let p = dir.trim()
+  if (p === '~' || p.startsWith('~/')) p = join(homedir(), p.slice(1))
+  return resolve(p)
+}
+
+/** Create a fresh local git repo (dir + git init + README + initial commit). */
+async function initLocalRepo(dest: string, displayName: string): Promise<void> {
+  mkdirSync(dest, { recursive: true })
+  const init = await run('git', ['init'], { cwd: dest })
+  if (init.code !== 0) throw new Error(`git init failed: ${init.stderr.trim()}`)
+  writeFileSync(join(dest, 'README.md'), `# ${displayName}\n`)
+  await run('git', ['add', '-A'], { cwd: dest })
+  const commit = await run('git', ['-c', 'user.email=dispatch@local', '-c', 'user.name=Dispatch', 'commit', '-m', 'Initial commit'], { cwd: dest })
+  if (commit.code !== 0) throw new Error(`initial commit failed: ${commit.stderr.trim()}`)
+}
 
 async function statusFor(app: AppRecord): Promise<AppStatus> {
   const cloned = await isGitRepo(app.localPath)
@@ -57,6 +79,11 @@ export function appsRouter(): Router {
         s.agent = rec.agent
         changed = true
       }
+      if (!rec.repoMode) {
+        rec.repoMode = s.hasRemote ? 'remote' : 'local'
+        s.repoMode = rec.repoMode
+        changed = true
+      }
     }
     if (changed) saveConfig(cfg)
     res.json({ apps })
@@ -76,12 +103,12 @@ export function appsRouter(): Router {
     res.json(await diagnoseRepo(localPath))
   })
 
-  // POST /apps — register a local git repo { localPath, name?, repoSlug?, defaultBranch? }.
+  // POST /apps — register a local git repo { localPath, name?, repoSlug?, defaultBranch?, repoMode? }.
   r.post('/apps', async (req, res) => {
-    const { name, localPath, repoSlug, defaultBranch } = req.body ?? {}
+    const { name, localPath, repoSlug, defaultBranch, repoMode } = req.body ?? {}
     if (!localPath || typeof localPath !== 'string') return res.status(400).json({ error: 'localPath is required' })
     try {
-      const app = await registerRepo({ localPath, name, repoSlug, defaultBranch })
+      const app = await registerRepo({ localPath, name, repoSlug, defaultBranch, repoMode: repoMode === 'local' || repoMode === 'remote' ? repoMode : undefined })
       log.info('registered app', app.id, app.name, app.localPath)
       res.status(201).json(await statusFor(app))
     } catch (err) {
@@ -124,10 +151,62 @@ export function appsRouter(): Router {
       return res.status(400).json({ error: 'clone failed — check the URL and that you have access (SSH key / gh auth)' })
     }
     try {
-      const app = await registerRepo({ localPath: dest, name: typeof name === 'string' ? name : undefined })
+      const app = await registerRepo({ localPath: dest, name: typeof name === 'string' ? name : undefined, repoMode: 'remote' })
       log.info('cloned + registered app', app.id, app.name, app.localPath)
       res.status(201).json(await statusFor(app))
     } catch (err) {
+      res.status(400).json({ error: (err as Error).message })
+    }
+  })
+
+  // POST /apps/init-local — create a brand-new local-only repo and register it.
+  r.post('/apps/init-local', async (req, res) => {
+    const { parentDir, slug, name } = req.body ?? {}
+    if (!parentDir || typeof parentDir !== 'string' || !parentDir.trim()) return res.status(400).json({ error: 'a destination folder is required' })
+    const folder = slugify((typeof slug === 'string' && slug.trim()) || (typeof name === 'string' ? name : '') || 'new-app')
+    const parent = expandDir(parentDir)
+    const dest = join(parent, folder)
+    if (existsSync(dest) && readdirSync(dest).length) return res.status(400).json({ error: `a non-empty folder already exists at ${dest}` })
+    const cfg = loadConfig()
+    if (!cfg.roots.includes(parent)) {
+      cfg.roots.push(parent)
+      saveConfig(cfg)
+    }
+    try {
+      await initLocalRepo(dest, typeof name === 'string' && name.trim() ? name.trim() : folder)
+      const app = await registerRepo({ localPath: dest, name: typeof name === 'string' ? name : undefined, repoMode: 'local' })
+      log.info('created local repo + app', app.id, app.name, app.localPath)
+      res.status(201).json(await statusFor(app))
+    } catch (err) {
+      if (existsSync(dest)) rmSync(dest, { recursive: true, force: true })
+      res.status(400).json({ error: (err as Error).message })
+    }
+  })
+
+  // POST /apps/create-remote — create a new local repo, publish it to GitHub, register it.
+  r.post('/apps/create-remote', async (req, res) => {
+    const { parentDir, slug, name, private: priv } = req.body ?? {}
+    if (!parentDir || typeof parentDir !== 'string' || !parentDir.trim()) return res.status(400).json({ error: 'a destination folder is required' })
+    if (!(await ghInstalled())) return res.status(400).json({ error: 'GitHub CLI (gh) not found — install gh, or use a local repo' })
+    if (!(await ghAuthed())) return res.status(400).json({ error: 'GitHub CLI isn’t signed in — run `gh auth login` in a terminal' })
+    const folder = slugify((typeof slug === 'string' && slug.trim()) || (typeof name === 'string' ? name : '') || 'new-app')
+    const parent = expandDir(parentDir)
+    const dest = join(parent, folder)
+    if (existsSync(dest) && readdirSync(dest).length) return res.status(400).json({ error: `a non-empty folder already exists at ${dest}` })
+    const cfg = loadConfig()
+    if (!cfg.roots.includes(parent)) {
+      cfg.roots.push(parent)
+      saveConfig(cfg)
+    }
+    try {
+      await initLocalRepo(dest, typeof name === 'string' && name.trim() ? name.trim() : folder)
+      const created = await ghCreateRepo(dest, folder, priv === false ? 'public' : 'private')
+      if (!created.ok) throw new Error(created.error)
+      const app = await registerRepo({ localPath: dest, name: typeof name === 'string' ? name : undefined, repoMode: 'remote' })
+      log.info('created remote repo + app', app.id, app.name, created.url)
+      res.status(201).json(await statusFor(app))
+    } catch (err) {
+      if (existsSync(dest)) rmSync(dest, { recursive: true, force: true })
       res.status(400).json({ error: (err as Error).message })
     }
   })
@@ -156,8 +235,13 @@ export function appsRouter(): Router {
     const cfg = loadConfig()
     const app = cfg.apps.find((a) => a.id === req.params.id)
     if (!app) return res.status(404).json({ error: 'unknown app' })
-    const { mergeStrategy, buildLocation, agent, name, planFirst, autoRetry, previewCommand } = req.body ?? {}
+    const { mergeStrategy, buildLocation, agent, name, planFirst, autoRetry, previewCommand, repoMode } = req.body ?? {}
     if (mergeStrategy === 'pr' || mergeStrategy === 'merge') app.mergeStrategy = mergeStrategy
+    // Switching Local/Remote also flips the default merge behavior to a sensible match.
+    if (repoMode === 'local' || repoMode === 'remote') {
+      app.repoMode = repoMode
+      if (mergeStrategy === undefined) app.mergeStrategy = repoMode === 'remote' ? 'pr' : 'merge'
+    }
     if (buildLocation === 'worktree' || buildLocation === 'workdir') app.buildLocation = buildLocation
     if (agent === 'codex' || agent === 'claude') app.agent = agent
     if (typeof planFirst === 'boolean') app.planFirst = planFirst

@@ -242,6 +242,27 @@ function PlanFirstToggle({ appId }: { appId: string }) {
   )
 }
 
+function RepoModeToggle({ appId }: { appId: string }) {
+  const app = useStore((s) => s.apps.find((a) => a.id === appId))
+  const setAppRepoMode = useStore((s) => s.setAppRepoMode)
+  if (!app) return null
+  const mode = app.repoMode ?? 'remote'
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+      <span style={labelStyle}>Repo</span>
+      <select
+        value={mode}
+        onChange={(e) => setAppRepoMode(appId, e.target.value as 'local' | 'remote')}
+        title="Remote: backed by a git host (opens PRs). Local: builds merge locally."
+        style={selectStyle(false)}
+      >
+        <option value="remote">🌐 Remote</option>
+        <option value="local">💻 Local</option>
+      </select>
+    </div>
+  )
+}
+
 function BuildLocationToggle({ appId }: { appId: string }) {
   const app = useStore((s) => s.apps.find((a) => a.id === appId))
   const setAppBuildLocation = useStore((s) => s.setAppBuildLocation)
@@ -568,7 +589,8 @@ function SettingsMenu({ appId }: { appId: string }) {
       </button>
       {open && (
         <>
-          <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
+          {/* onMouseDown (not onClick) so a text drag that releases here doesn't dismiss the menu. */}
+          <div onMouseDown={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
           <div
             style={{
               position: 'absolute',
@@ -592,6 +614,7 @@ function SettingsMenu({ appId }: { appId: string }) {
               <PlanFirstToggle appId={appId} />
               <AutoRetryToggle appId={appId} />
             </div>
+            <RepoModeToggle appId={appId} />
             {app.buildLocation && <BuildLocationToggle appId={appId} />}
             {app.mergeStrategy && <MergeModeToggle appId={appId} />}
             {live && <PreviewCommandField appId={appId} key={appId} />}

@@ -27,6 +27,8 @@ export interface App {
   buildLocation?: BuildLocation
   /** Which AI coding CLI builds cards for this repo. */
   agent?: CodingAgentId
+  /** Whether the repo is git-host backed (remote) or kept local-only. */
+  repoMode?: 'local' | 'remote'
   /** Propose a plan to approve before editing code. */
   planFirst?: boolean
   /** Auto-retry a failed build (fallback agent / fresh attempt). */
@@ -86,6 +88,10 @@ export interface Card {
   queued?: boolean
   /** If split off a larger idea, the parent card's id. */
   parentId?: string
+  /** Foundation card that must build + merge before its siblings (new-app scaffold). */
+  scaffold?: boolean
+  /** Held: waiting on the app's scaffold card to merge first. */
+  blocked?: boolean
   /** Archived: a shipped card hidden from the board (still searchable). */
   archived?: boolean
   archivedAt?: number
