@@ -14,10 +14,17 @@
     "zustand": "^4.5.5"
   },
   "devDependencies": {
+    "@rollup/wasm-node": "^4",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.3",
     "typescript": "^5.6.3",
     "vite": "^5.4.10"
+  },
+  "comments": {
+    "overrides": "Use rollup's WebAssembly build instead of the platform-native binary. The native binary fails to load under macOS library validation on locked-down/corporate machines ('different Team IDs'); WASM works everywhere with a negligible build-time cost for an app this size."
+  },
+  "overrides": {
+    "rollup": "npm:@rollup/wasm-node@^4"
   }
 }

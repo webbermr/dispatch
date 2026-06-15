@@ -7,7 +7,8 @@
     "dispatch-agent": "./dist/cli.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "web"
   ],
   "engines": {
     "node": ">=20"
@@ -16,6 +17,7 @@
     "dev": "tsx watch src/cli.ts",
     "start": "tsx src/cli.ts",
     "build": "tsc -p tsconfig.json",
+    "bundle": "node scripts/bundle-web.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

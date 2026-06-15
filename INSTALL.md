@@ -55,6 +55,10 @@ cd web && npm ci && npm run build && cd ..
 cd agent && npm ci && npm run build && cd ..
 ```
 
+> The web build uses Rollup's **WebAssembly** build (pinned via an override), so it works
+> on locked-down/corporate machines where the platform-native binary is blocked by macOS
+> library validation ("different Team IDs"). No per-machine setup needed.
+
 ## 4. Run it
 
 ```bash
@@ -77,20 +81,24 @@ Open **http://127.0.0.1:4317**, click **Connect**, and enter your pair code (or 
 
 ---
 
-## 5. Make it a real command (optional)
+## 5. Make it a real command — and the easiest way to install for others
 
-So you can launch it from anywhere as `dispatch-agent`:
+Bundle the built UI **into** the agent package, then install it globally. After this the
+agent ships the web UI with it — no `DISPATCH_WEB_DIR`, and **others can install without
+ever building the frontend**:
 
 ```bash
+cd web && npm ci && npm run build && cd ..   # build the UI once
 cd agent
-npm install -g .
-# point it at the built web bundle (absolute path):
-export DISPATCH_WEB_DIR="$(cd ../web/dist && pwd)"
+npm run bundle        # copies web/dist → agent/web (baked into the package)
+npm install -g .      # now `dispatch-agent` runs anywhere, serving the bundled UI
 dispatch-agent --pair MY-CODE
 ```
 
-Add the `DISPATCH_WEB_DIR` export to your shell profile (`~/.zshrc` / `~/.bashrc`) so it
-persists. You can also register repos from the CLI:
+Because `npm run bundle` bakes the UI into the package, the only thing an installer needs to
+build the frontend is **you, once** — teammates can `npm install -g` (or, once published,
+`npx @dispatch/agent`) and get pure JavaScript, no Vite/Rollup/native toolchain. You can also
+register repos from the CLI:
 
 ```bash
 dispatch-agent add ~/code/my-repo "My Repo"
