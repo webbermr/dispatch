@@ -96,6 +96,17 @@ persists. You can also register repos from the CLI:
 dispatch-agent add ~/code/my-repo "My Repo"
 ```
 
+> **If `dispatch-agent` "command not found" after install:** npm's global bin directory
+> isn't on your `PATH`. Find it and either add it to `PATH` or symlink the binary into a
+> directory that already is:
+> ```bash
+> npm prefix -g            # e.g. /Users/you/.hermes/node  → bin is <that>/bin
+> # add to PATH:
+> echo 'export PATH="$(npm prefix -g)/bin:$PATH"' >> ~/.zshrc
+> # …or symlink into a dir already on PATH (e.g. ~/.local/bin):
+> ln -sf "$(npm prefix -g)/bin/dispatch-agent" ~/.local/bin/dispatch-agent
+> ```
+
 ---
 
 ## 6. Start automatically at login (optional)
@@ -185,6 +196,49 @@ git pull
 (cd agent && npm ci && npm run build)
 # then restart the agent (or: launchctl unload/load, systemctl --user restart dispatch-agent)
 ```
+
+---
+
+## 8. Team mode — multiple developers (optional)
+
+Everything above is single-developer (local-only). Team mode adds a small **control-plane
+server** that hosts a shared board; each developer's machine connects to it as a **runner**
+that builds cards locally. **Code and credentials never leave each developer's machine** —
+the server only holds the board, statuses, and diffs/logs. (Architecture: `MULTI_DEV_PLAN.md`.)
+
+**Run the control-plane server** (one instance the team shares):
+
+```bash
+cd server && npm ci && npm run build
+node dist/index.js            # listens on :4400 (DISPATCH_SERVER_PORT to change)
+```
+
+Env: `DISPATCH_SERVER_PORT`, `DISPATCH_SERVER_HOST` (use `0.0.0.0` to expose to teammates),
+`DISPATCH_SERVER_HOME` (data dir, default `~/.dispatch-server`), `DISPATCH_ALLOW_DEV_LOGIN`
+(set `0` in production), and `GITHUB_CLIENT_ID`/`GITHUB_CLIENT_SECRET` for GitHub OAuth
+(otherwise dev login is used). Storage is JSON for now; Postgres is the production target.
+
+**Open the team board:** visit the served web app at **`/#team`** (e.g.
+`http://127.0.0.1:4317/#team`, or your Vite dev URL). Sign in, create a workspace + repo,
+and invite teammates.
+
+**Connect your machine as a runner** so cards can build:
+
+1. In the board's repo list, click **Generate runner command** (mints a runner token).
+2. Make sure the repo you want to build is registered locally with a matching slug
+   (`dispatch-agent add ~/code/my-repo`), then run:
+
+   ```bash
+   dispatch-agent runner --server http://<server-host>:4400 --token <RUNNER-TOKEN>
+   ```
+
+   The runner advertises the repos you have cloned; dispatching a card builds it on **your**
+   machine and streams status + the diff back to the shared board. Approving a reviewed card
+   merges (or opens a PR) on the machine that built it.
+
+> Run the runner from a normal terminal (or autostart it like §6, with a PATH that includes
+> `git`, `codex`/`claude`, and `gh`). A card's server repo **slug must match** one of your
+> locally-registered repos for it to build.
 
 ---
 
