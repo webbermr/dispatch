@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useStore } from '../store/useStore'
 
-export function TopBar() {
+export function TopBar({ mode, onModeChange }: { mode?: 'solo' | 'team'; onModeChange?: (m: 'solo' | 'team') => void } = {}) {
   const agentStatus = useStore((s) => s.agentStatus)
   const agentBusy = useStore((s) => s.agentBusy)
   const agentPort = useStore((s) => s.agentPort)
@@ -62,6 +62,21 @@ export function TopBar() {
         Pick a card. Build a feature.
       </div>
       <div style={{ flex: 1 }} />
+      {onModeChange && (
+        <div style={{ display: 'flex', background: 'rgba(255,255,255,.08)', borderRadius: 'var(--radius-pill)', padding: 2 }}>
+          {(['solo', 'team'] as const).map((m) => (
+            <button
+              key={m}
+              onClick={() => onModeChange(m)}
+              title={m === 'solo' ? 'Your machine, just you' : 'Shared board with your team'}
+              style={{ height: 28, padding: '0 13px', border: 'none', borderRadius: 'var(--radius-pill)', background: mode === m ? '#fff' : 'transparent', color: mode === m ? 'var(--color-dark-navy)' : '#fff', cursor: 'pointer', fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 12 }}
+            >
+              {m === 'solo' ? 'Solo' : 'Team'}
+            </button>
+          ))}
+        </div>
+      )}
+      {mode !== 'team' && (
       <button
         onClick={openConnect}
         onMouseEnter={() => setHover(true)}
@@ -85,6 +100,7 @@ export function TopBar() {
         <span style={{ width: 8, height: 8, borderRadius: '50%', background: dotColor, boxShadow: `0 0 0 3px ${dotGlow}` }} />
         {label}
       </button>
+      )}
     </header>
   )
 }

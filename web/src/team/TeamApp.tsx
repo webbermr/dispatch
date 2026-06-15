@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { server, type SCard, type SRepo, type SRunSummary, type SRun, type SUser, type SWorkspace, type CardStatus } from '../lib/serverClient'
+import { RepoModePill } from '../components/AppPicker'
 
 const COLS: { key: CardStatus; title: string }[] = [
   { key: 'ideas', title: 'Ideas' },
@@ -43,16 +44,14 @@ export function TeamApp() {
   if (!user) return <Login onAuthed={setUser} />
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-      <header style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 22px', borderBottom: '1px solid var(--border-subtle)', background: 'var(--color-dark-navy)', color: '#fff' }}>
-        <strong style={{ fontFamily: 'var(--font-heading)' }}>Dispatch · Team</strong>
-        <span style={{ opacity: 0.6 }}>›</span>
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      <header style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 22px', borderBottom: '1px solid var(--border-subtle)', background: '#fff' }}>
         <button onClick={() => { setActiveWs(null); setActiveRepo(null) }} style={crumb(!activeWs)}>Workspaces</button>
-        {activeWs && (<><span style={{ opacity: 0.6 }}>›</span><button onClick={() => setActiveRepo(null)} style={crumb(!activeRepo)}>{activeWs.name}</button></>)}
-        {activeRepo && (<><span style={{ opacity: 0.6 }}>›</span><span style={{ fontWeight: 700 }}>{activeRepo.name}</span></>)}
+        {activeWs && (<><span style={{ color: 'var(--text-subtle)' }}>›</span><button onClick={() => setActiveRepo(null)} style={crumb(!activeRepo)}>{activeWs.name}</button></>)}
+        {activeRepo && (<><span style={{ color: 'var(--text-subtle)' }}>›</span><span style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 14, color: 'var(--text-strong)' }}>{activeRepo.name}</span></>)}
         <div style={{ flex: 1 }} />
-        <span style={{ fontSize: 13, opacity: 0.85 }}>{user.name}</span>
-        <button onClick={() => { server.logout().catch(() => {}); setUser(null); setWs([]); setActiveWs(null); setActiveRepo(null) }} style={{ ...btnGhost, height: 30, background: 'transparent', color: '#fff', borderColor: 'rgba(255,255,255,.3)' }}>Sign out</button>
+        <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>{user.name}</span>
+        <button onClick={() => { server.logout().catch(() => {}); setUser(null); setWs([]); setActiveWs(null); setActiveRepo(null) }} style={{ ...btnGhost, height: 30 }}>Sign out</button>
       </header>
 
       {error && <div style={{ padding: '8px 22px', background: 'var(--status-danger-surface)', color: 'var(--status-danger)', fontSize: 13 }}>{error}</div>}
@@ -70,7 +69,7 @@ export function TeamApp() {
   )
 }
 
-const crumb = (active: boolean) => ({ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontFamily: 'var(--font-heading)', fontWeight: active ? 700 : 500, fontSize: 14, opacity: active ? 1 : 0.8, padding: 0 } as const)
+const crumb = (active: boolean) => ({ background: 'none', border: 'none', color: active ? 'var(--text-strong)' : 'var(--text-muted)', cursor: 'pointer', fontFamily: 'var(--font-heading)', fontWeight: active ? 700 : 600, fontSize: 14, padding: 0 } as const)
 
 function Login({ onAuthed }: { onAuthed: (u: SUser) => void }) {
   const [url, setUrl] = useState(server.baseUrl)
@@ -86,7 +85,7 @@ function Login({ onAuthed }: { onAuthed: (u: SUser) => void }) {
     server.devLogin(email.trim(), name.trim() || email.split('@')[0]).then(onAuthed).catch((e) => setErr((e as Error).message)).finally(() => setBusy(false))
   }
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+    <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
       <div style={{ width: '100%', maxWidth: 380, background: '#fff', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-lg)', padding: 24 }}>
         <h2 style={{ fontFamily: 'var(--font-heading)', margin: '0 0 4px', color: 'var(--text-strong)' }}>Dispatch · Team</h2>
         <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: '0 0 16px' }}>Sign in to your shared board (dev login).</p>
@@ -152,8 +151,11 @@ function Repos({ workspace, repos, onOpen, onCreate, setError }: { workspace: SW
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px,1fr))', gap: 12 }}>
         {repos.map((r) => (
           <button key={r.id} onClick={() => onOpen(r)} style={{ textAlign: 'left', padding: 16, background: '#fff', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)', cursor: 'pointer', boxShadow: 'var(--shadow-xs)' }}>
-            <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 16, color: 'var(--text-strong)' }}>{r.name}</div>
-            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>{r.repoSlug || r.repoMode}</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+              <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 16, color: 'var(--text-strong)' }}>{r.name}</span>
+              <RepoModePill mode={r.repoMode} />
+            </div>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-muted)' }}>{r.repoSlug || '(builds on a matching local clone)'}</div>
           </button>
         ))}
         {repos.length === 0 && <div style={{ color: 'var(--text-subtle)', fontSize: 13.5 }}>No repos yet — add one.</div>}
@@ -222,7 +224,15 @@ function Board({ repo, setError }: { repo: SRepo; setError: (s: string) => void 
 
   const visible = cards.filter((c) => !c.archived)
   return (
-    <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start', overflowX: 'auto' }}>
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, fontSize: 12.5, color: 'var(--text-muted)' }}>
+        <RepoModePill mode={repo.repoMode} />
+        <span>
+          Cards build on <strong>your machine</strong> via your runner.{' '}
+          {repo.repoMode === 'remote' ? 'Approve opens a pull request.' : 'Approve merges into your local branch.'}
+        </span>
+      </div>
+      <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start', overflowX: 'auto' }}>
       {COLS.map((col) => {
         const list = visible.filter((c) => c.status === col.key).sort((a, b) => b.order - a.order)
         return (
@@ -290,6 +300,7 @@ function Board({ repo, setError }: { repo: SRepo; setError: (s: string) => void 
           </section>
         )
       })}
+      </div>
     </div>
   )
 }
