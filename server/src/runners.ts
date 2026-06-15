@@ -31,16 +31,31 @@ class RunnerRegistry {
   remove(connId: string): void {
     this.runners.delete(connId)
   }
-  /** A runner owned by this user, in this workspace, that advertises the repo slug. */
-  findForDispatch(workspaceId: string, userId: string, slug: string): ConnectedRunner | undefined {
+  /** A runner owned by this user, in this workspace, that has this repo cloned.
+   *  Returns the runner plus the exact advertised slug that matched. */
+  findRunner(workspaceId: string, userId: string, repo: Repo): { runner: ConnectedRunner; slug: string } | undefined {
     for (const r of this.runners.values()) {
-      if (r.workspaceId === workspaceId && r.userId === userId && r.repos.includes(slug)) return r
+      if (r.workspaceId !== workspaceId || r.userId !== userId) continue
+      const slug = r.repos.find((s) => repoMatches(s, repo))
+      if (slug) return { runner: r, slug }
     }
     return undefined
   }
   byConn(connId: string): ConnectedRunner | undefined {
     return this.runners.get(connId)
   }
+}
+
+const lastSegment = (s: string): string => (s.split('/').pop() || s).toLowerCase()
+
+/** Does a runner's advertised slug correspond to this server repo? Exact slug match,
+ *  else a lenient match on the repo name (so "inkwell" matches "webbermr/inkwell"). */
+function repoMatches(advertised: string, repo: Repo): boolean {
+  const a = advertised.toLowerCase()
+  const slug = (repo.repoSlug || '').toLowerCase()
+  if (slug && a === slug) return true
+  const target = slug ? lastSegment(slug) : repo.name.toLowerCase()
+  return lastSegment(a) === target
 }
 
 export const runners = new RunnerRegistry()
@@ -51,9 +66,9 @@ function emitRun(run: Run): void {
 
 /** Dispatch a card to the dispatcher's own runner. Throws { status, error } if none. */
 export function dispatchCard(card: Card, repo: Repo, user: User): Run {
-  const runner = runners.findForDispatch(repo.workspaceId, user.id, repo.repoSlug)
-  if (!runner) {
-    throw Object.assign(new Error(`no connected machine for "${repo.repoSlug || repo.name}". Start your agent in runner mode, with this repo cloned.`), { status: 409 })
+  const match = runners.findRunner(repo.workspaceId, user.id, repo)
+  if (!match) {
+    throw Object.assign(new Error(`no connected machine has "${repo.repoSlug || repo.name}" cloned. Start your agent in runner mode (dispatch-agent runner …) with this repo registered locally.`), { status: 409 })
   }
   const now = Date.now()
   const run = store.runs.insert({
@@ -62,7 +77,7 @@ export function dispatchCard(card: Card, repo: Repo, user: User): Run {
     workspaceId: repo.workspaceId,
     cardId: card.id,
     userId: user.id,
-    runnerName: runner.name,
+    runnerName: match.runner.name,
     agentId: repo.settings?.agent,
     model: card.model,
     status: 'building',
@@ -78,10 +93,10 @@ export function dispatchCard(card: Card, repo: Repo, user: User): Run {
   const updatedCard = store.cards.byId(card.id)!
   bus.publish({ type: 'card.update', repoId: repo.id, card: updatedCard })
   emitRun(run)
-  runner.send({
+  match.runner.send({
     type: 'job',
     runId: run.id,
-    repoSlug: repo.repoSlug,
+    repoSlug: match.slug, // the runner's own advertised slug → resolves its local clone exactly
     repoName: repo.name,
     prompt: card.prompt,
     title: card.title,
@@ -100,10 +115,10 @@ export function approveRun(card: Card, repo: Repo): Run {
   const run = store.runs.byId(card.runId)
   if (!run || run.status !== 'needs_review') throw Object.assign(new Error('this card is not awaiting review'), { status: 400 })
   // Route to the runner owned by whoever built it (their machine has the worktree + creds).
-  const runner = runners.findForDispatch(repo.workspaceId, run.userId, repo.repoSlug)
-  if (!runner) throw Object.assign(new Error('the machine that built this card is offline — its owner must reconnect their runner'), { status: 409 })
+  const match = runners.findRunner(repo.workspaceId, run.userId, repo)
+  if (!match) throw Object.assign(new Error('the machine that built this card is offline — its owner must reconnect their runner'), { status: 409 })
   const strategy = repo.repoMode === 'local' || repo.settings?.mergeStrategy === 'merge' ? 'merge' : 'pr'
-  runner.send({ type: 'approve', runId: run.id, strategy, defaultBranch: repo.defaultBranch, title: card.title })
+  match.runner.send({ type: 'approve', runId: run.id, strategy, defaultBranch: repo.defaultBranch, title: card.title })
   return run
 }
 
