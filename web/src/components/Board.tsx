@@ -16,9 +16,11 @@ export function Board() {
   const live = useStore((s) => s.live)
   const [backHover, setBackHover] = useState(false)
 
+  const filter = useStore((s) => s.filter)
   const app = apps.find((a) => a.id === appId)
   if (!app) return null
-  const appCards = cards.filter((c) => c.appId === appId)
+  // Archived cards never show on the board; the rest are subject to the filter bar.
+  const appCards = cards.filter((c) => c.appId === appId && !c.archived && matchesFilter(c, filter, app))
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, flex: 1 }}>
@@ -66,12 +68,16 @@ export function Board() {
           </Button>
         )}
         <div style={{ flex: 1 }} />
+        {live && <DecomposeChip appId={app.id} />}
+        {live && <AgentsMdChip appId={app.id} />}
         {live && <QueueStatus appId={app.id} />}
         <SettingsMenu appId={app.id} />
         <Button variant="secondary" onClick={newCard} style={{ height: 36, color: 'var(--brand-primary)' }}>
           + New card
         </Button>
       </div>
+
+      <FilterBar appId={app.id} />
 
       <div className="dp-scroll" style={{ overflowX: 'auto', padding: 22, display: 'flex', gap: 16, alignItems: 'flex-start', justifyContent: 'safe center' }}>
         {COLS.map((col) => {
@@ -107,6 +113,24 @@ const labelStyle = {
 } as const
 
 const AGENT_LABELS: Record<string, string> = { codex: 'Codex', claude: 'Claude Code' }
+
+/** Small inline spinning ring. */
+function Spinner({ size = 13 }: { size?: number }) {
+  return (
+    <span
+      style={{
+        display: 'inline-block',
+        width: size,
+        height: size,
+        flex: `0 0 ${size}px`,
+        borderRadius: '50%',
+        border: '2px solid var(--neutral-200)',
+        borderTopColor: 'var(--brand-primary)',
+        animation: 'dpspin .7s linear infinite',
+      }}
+    />
+  )
+}
 
 function AgentToggle({ appId }: { appId: string }) {
   const app = useStore((s) => s.apps.find((a) => a.id === appId))
@@ -194,11 +218,14 @@ function PlanFirstToggle({ appId }: { appId: string }) {
       onClick={() => setAppPlanFirst(appId, !on)}
       title="Have the agent propose a plan to approve before it edits any code"
       style={{
+        flex: 1,
         display: 'flex',
         alignItems: 'center',
+        justifyContent: 'center',
         gap: 7,
         height: 30,
         padding: '0 11px',
+        whiteSpace: 'nowrap',
         border: `1px solid ${on ? 'var(--brand-primary)' : 'var(--border-default)'}`,
         borderRadius: 'var(--radius-sm)',
         background: on ? 'var(--brand-primary)' : '#fff',
@@ -295,11 +322,14 @@ function AutoRetryToggle({ appId }: { appId: string }) {
       onClick={() => setAppAutoRetry(appId, !on)}
       title="If a build fails, automatically retry once — with the other agent if installed, else a refined prompt"
       style={{
+        flex: 1,
         display: 'flex',
         alignItems: 'center',
+        justifyContent: 'center',
         gap: 7,
         height: 30,
         padding: '0 11px',
+        whiteSpace: 'nowrap',
         border: `1px solid ${on ? 'var(--brand-primary)' : 'var(--border-default)'}`,
         borderRadius: 'var(--radius-sm)',
         background: on ? 'var(--brand-primary)' : '#fff',
@@ -315,6 +345,162 @@ function AutoRetryToggle({ appId }: { appId: string }) {
     </button>
   )
 }
+
+/** Header chip shown while ideas in this repo are being split into sub-cards. */
+function DecomposeChip({ appId }: { appId: string }) {
+  const count = useStore((s) => s.decomposing.filter((id) => s.cards.some((c) => c.id === id && c.appId === appId)).length)
+  if (!count) return null
+  return (
+    <span
+      title="Splitting an idea into scoped sub-cards"
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 7,
+        height: 30,
+        padding: '0 11px',
+        borderRadius: 'var(--radius-pill)',
+        border: '1px solid var(--border-subtle)',
+        background: 'var(--neutral-50)',
+        fontFamily: 'var(--font-heading)',
+        fontWeight: 700,
+        fontSize: 12,
+        color: 'var(--text-muted)',
+        whiteSpace: 'nowrap',
+      }}
+    >
+      <Spinner size={12} />
+      Splitting {count > 1 ? `${count} ideas` : 'idea'}…
+    </span>
+  )
+}
+
+/** Persistent header chip shown while this repo's AGENTS.md is generating. */
+function AgentsMdChip({ appId }: { appId: string }) {
+  const busy = useStore((s) => s.agentsMdBusy === appId)
+  if (!busy) return null
+  return (
+    <span
+      title="Scanning the repo to generate AGENTS.md"
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 7,
+        height: 30,
+        padding: '0 11px',
+        borderRadius: 'var(--radius-pill)',
+        border: '1px solid var(--border-subtle)',
+        background: 'var(--neutral-50)',
+        fontFamily: 'var(--font-heading)',
+        fontWeight: 700,
+        fontSize: 12,
+        color: 'var(--text-muted)',
+        whiteSpace: 'nowrap',
+      }}
+    >
+      <Spinner size={12} />
+      Generating AGENTS.md…
+    </span>
+  )
+}
+
+/** Does a card match the active board filter (text / type / agent)? */
+function matchesFilter(c: import('../store/types').Card, f: import('../store/useStore').BoardFilter, app?: import('../store/types').App): boolean {
+  if (f.type !== 'all' && c.type !== f.type) return false
+  if (f.agent !== 'all' && (c.agentId ?? app?.agent ?? 'codex') !== f.agent) return false
+  const t = f.text.trim().toLowerCase()
+  if (t) {
+    const hay = `${c.title} ${c.desc} ${c.prompt ?? ''} ${c.branch ?? ''}`.toLowerCase()
+    if (!hay.includes(t)) return false
+  }
+  return true
+}
+
+const filterControl = {
+  height: 30,
+  padding: '0 9px',
+  border: '1px solid var(--border-default)',
+  borderRadius: 'var(--radius-sm)',
+  background: '#fff',
+  fontFamily: 'var(--font-body)',
+  fontSize: 13,
+  color: 'var(--text-body)',
+  outline: 'none',
+} as const
+
+function iconBtn(active: boolean) {
+  return {
+    height: 30,
+    minWidth: 32,
+    padding: '0 9px',
+    border: `1px solid ${active ? 'var(--brand-primary)' : 'var(--border-default)'}`,
+    borderRadius: 'var(--radius-sm)',
+    background: active ? 'var(--brand-primary)' : '#fff',
+    color: active ? '#fff' : 'var(--text-body)',
+    cursor: 'pointer',
+    fontFamily: 'var(--font-heading)',
+    fontWeight: 700,
+    fontSize: 13,
+  } as const
+}
+
+/** Board-wide search + type/agent filters, plus notify / stats / archive controls. */
+function FilterBar({ appId }: { appId: string }) {
+  const filter = useStore((s) => s.filter)
+  const setFilter = useStore((s) => s.setFilter)
+  const notify = useStore((s) => s.notify)
+  const toggleNotify = useStore((s) => s.toggleNotify)
+  const setStatsOpen = useStore((s) => s.setStatsOpen)
+  const setArchiveOpen = useStore((s) => s.setArchiveOpen)
+  const openRepoChat = useStore((s) => s.openRepoChat)
+  const archivedCount = useStore((s) => s.cards.filter((c) => c.appId === appId && c.archived).length)
+  const active = filter.text.trim() !== '' || filter.type !== 'all' || filter.agent !== 'all'
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 22px', borderBottom: '1px solid var(--border-subtle)', background: '#fff', flexWrap: 'wrap' }}>
+      <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+        <span style={{ position: 'absolute', left: 9, fontSize: 12, color: 'var(--text-subtle)', pointerEvents: 'none' }}>🔍</span>
+        <input
+          value={filter.text}
+          onChange={(e) => setFilter({ text: e.target.value })}
+          placeholder="Search cards…"
+          style={{ ...filterControl, width: 200, paddingLeft: 28 }}
+        />
+      </div>
+      <select value={filter.type} onChange={(e) => setFilter({ type: e.target.value as BoardFilterType })} style={{ ...filterControl, cursor: 'pointer' }}>
+        <option value="all">All types</option>
+        <option value="feature">Feature</option>
+        <option value="bug">Bug</option>
+        <option value="enhancement">Enhancement</option>
+      </select>
+      <select value={filter.agent} onChange={(e) => setFilter({ agent: e.target.value as BoardFilterAgent })} style={{ ...filterControl, cursor: 'pointer' }}>
+        <option value="all">Any agent</option>
+        <option value="codex">Codex</option>
+        <option value="claude">Claude Code</option>
+      </select>
+      {active && (
+        <button onClick={() => setFilter({ text: '', type: 'all', agent: 'all' })} style={{ ...iconBtn(false), color: 'var(--brand-primary)' }}>
+          Clear
+        </button>
+      )}
+      <div style={{ flex: 1 }} />
+      <button onClick={openRepoChat} title="Ask questions about this repo" style={{ ...iconBtn(false), color: 'var(--brand-primary)' }}>
+        💬 Ask
+      </button>
+      <button onClick={toggleNotify} title={notify ? 'Desktop notifications on' : 'Get notified when builds finish'} style={iconBtn(notify)}>
+        {notify ? '🔔' : '🔕'}
+      </button>
+      <button onClick={() => setStatsOpen(true)} title="Build stats" style={iconBtn(false)}>
+        📊 Stats
+      </button>
+      <button onClick={() => setArchiveOpen(true)} title="Archived cards" style={iconBtn(false)}>
+        🗄 Archive{archivedCount ? ` (${archivedCount})` : ''}
+      </button>
+    </div>
+  )
+}
+
+type BoardFilterType = 'all' | 'feature' | 'bug' | 'enhancement'
+type BoardFilterAgent = 'all' | 'codex' | 'claude'
 
 /** Live build-queue chip + bulk "Build all Ready" action. */
 function QueueStatus({ appId }: { appId: string }) {
@@ -357,6 +543,7 @@ function SettingsMenu({ appId }: { appId: string }) {
   const app = useStore((s) => s.apps.find((a) => a.id === appId))
   const live = useStore((s) => s.live)
   const generateAgentsMd = useStore((s) => s.generateAgentsMd)
+  const agentsMdBusy = useStore((s) => s.agentsMdBusy === appId)
   const [open, setOpen] = useState(false)
   if (!app) return null
   return (
@@ -388,7 +575,7 @@ function SettingsMenu({ appId }: { appId: string }) {
               top: 42,
               right: 0,
               zIndex: 41,
-              width: 280,
+              width: 340,
               background: '#fff',
               border: '1px solid var(--border-default)',
               borderRadius: 'var(--radius-md)',
@@ -401,7 +588,7 @@ function SettingsMenu({ appId }: { appId: string }) {
             }}
           >
             {app.agent && <AgentToggle appId={appId} />}
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            <div style={{ display: 'flex', gap: 8, width: '100%' }}>
               <PlanFirstToggle appId={appId} />
               <AutoRetryToggle appId={appId} />
             </div>
@@ -412,18 +599,19 @@ function SettingsMenu({ appId }: { appId: string }) {
               <div style={{ width: '100%', borderTop: '1px solid var(--border-subtle)', paddingTop: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
                 <span style={labelStyle}>Repo setup</span>
                 <button
-                  onClick={() => {
-                    setOpen(false)
-                    generateAgentsMd(appId)
-                  }}
+                  onClick={() => !agentsMdBusy && generateAgentsMd(appId)}
+                  disabled={agentsMdBusy}
                   title="Scan the repo and write an AGENTS.md the coding agent will use as context"
                   style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
                     height: 32,
                     padding: '0 11px',
                     border: '1px solid var(--border-default)',
                     borderRadius: 'var(--radius-sm)',
                     background: '#fff',
-                    cursor: 'pointer',
+                    cursor: agentsMdBusy ? 'default' : 'pointer',
                     fontFamily: 'var(--font-heading)',
                     fontWeight: 700,
                     fontSize: 13,
@@ -431,7 +619,14 @@ function SettingsMenu({ appId }: { appId: string }) {
                     textAlign: 'left',
                   }}
                 >
-                  📝 Generate AGENTS.md
+                  {agentsMdBusy ? (
+                    <>
+                      <Spinner />
+                      Generating AGENTS.md…
+                    </>
+                  ) : (
+                    <>📝 Generate AGENTS.md</>
+                  )}
                 </button>
               </div>
             )}
@@ -481,8 +676,52 @@ function NewCardTile() {
   )
 }
 
+/** Compact one-line row for a shipped (merged) card. */
+function ShippedRow({ card }: { card: import('../store/types').Card }) {
+  const openCard = useStore((s) => s.openCard)
+  const archiveCard = useStore((s) => s.archiveCard)
+  const [hover, setHover] = useState(false)
+  const isPr = !!card.prUrl
+  return (
+    <div
+      onClick={() => openCard(card.id)}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        padding: '8px 10px',
+        background: '#fff',
+        border: '1px solid var(--border-subtle)',
+        borderRadius: 'var(--radius-sm)',
+        cursor: 'pointer',
+        boxShadow: hover ? 'var(--shadow-xs)' : 'none',
+      }}
+    >
+      <span title={isPr ? 'Pull request opened' : 'Merged locally'} style={{ color: 'var(--status-success)', fontSize: 13, flex: '0 0 auto' }}>{isPr ? '⎋' : '✓'}</span>
+      <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 13, color: 'var(--text-strong)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{card.title}</span>
+      <div style={{ flex: 1 }} />
+      {card.branch && <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-subtle)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 90 }}>⎇ {card.branch}</span>}
+      <button
+        onClick={(e) => {
+          e.stopPropagation()
+          archiveCard(card.id)
+        }}
+        title="Archive"
+        style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-subtle)', fontSize: 13, padding: 0, opacity: hover ? 1 : 0, transition: 'opacity var(--duration-fast)', flex: '0 0 auto' }}
+      >
+        🗄
+      </button>
+    </div>
+  )
+}
+
 function Column({ colKey, title, accent, live, empty, cards }: ColumnProps) {
   const dropOnColumn = useStore((s) => s.dropOnColumn)
+  const clearShipped = useStore((s) => s.clearShipped)
+  const [mergedLimit, setMergedLimit] = useState(6)
+  const isMerged = colKey === 'merged'
 
   return (
     <section
@@ -559,9 +798,27 @@ function Column({ colKey, title, accent, live, empty, cards }: ColumnProps) {
       <div style={{ padding: '0 11px 12px', display: 'flex', flexDirection: 'column', gap: 11, overflowY: 'auto' }}>
         {/* Ideas always shows a "+ New card" tile at the top (in place of the empty hint). */}
         {colKey === 'ideas' && <NewCardTile />}
-        {cards.map((c) => (
-          <Card key={c.id} card={c} />
-        ))}
+        {/* Merged ("Shipped") renders compact rows, capped, with a Clear action. */}
+        {isMerged
+          ? cards.slice(0, mergedLimit).map((c) => <ShippedRow key={c.id} card={c} />)
+          : cards.map((c) => <Card key={c.id} card={c} />)}
+        {isMerged && cards.length > mergedLimit && (
+          <button
+            onClick={() => setMergedLimit((l) => l + 12)}
+            style={{ height: 30, border: '1px dashed var(--border-default)', borderRadius: 'var(--radius-sm)', background: 'rgba(255,255,255,.5)', cursor: 'pointer', fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 12.5, color: 'var(--text-muted)' }}
+          >
+            Show {cards.length - mergedLimit} more
+          </button>
+        )}
+        {isMerged && cards.length > 0 && (
+          <button
+            onClick={clearShipped}
+            title="Archive all shipped cards"
+            style={{ height: 30, border: '1px solid var(--border-default)', borderRadius: 'var(--radius-sm)', background: '#fff', cursor: 'pointer', fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 12.5, color: 'var(--text-muted)', marginTop: 2 }}
+          >
+            🗄 Clear shipped
+          </button>
+        )}
         {cards.length === 0 && colKey !== 'ideas' && (
           <div
             style={{

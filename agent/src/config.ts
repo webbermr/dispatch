@@ -2,12 +2,13 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from '
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { log } from './lib/log.js'
-import type { PersistedConfig, PersistedState } from './types.js'
+import type { PersistedConfig, PersistedState, RepoChatRecord } from './types.js'
 
 export const DISPATCH_HOME = process.env.DISPATCH_HOME || join(homedir(), '.dispatch')
 export const CONFIG_PATH = join(DISPATCH_HOME, 'config.json')
 export const STATE_PATH = join(DISPATCH_HOME, 'state.json')
 export const PAIRINGS_PATH = join(DISPATCH_HOME, 'pairings.json')
+export const CHATS_PATH = join(DISPATCH_HOME, 'chats.json')
 export const WORKTREES_DIR = join(DISPATCH_HOME, 'worktrees')
 
 export const PORT = Number(process.env.DISPATCH_PORT || 4317)
@@ -63,6 +64,14 @@ export function loadState(): PersistedState {
 
 export function saveState(state: PersistedState): void {
   writeJson(STATE_PATH, state)
+}
+
+export function loadChats(): RepoChatRecord[] {
+  return readJson<{ chats: RepoChatRecord[] }>(CHATS_PATH, { chats: [] }).chats
+}
+
+export function saveChats(chats: RepoChatRecord[]): void {
+  writeJson(CHATS_PATH, { chats })
 }
 
 export function loadPairings(): string[] {

@@ -72,6 +72,8 @@ export function mapCard(c: AgentCard, run?: AgentRun): Card {
     model: c.model,
     queued: c.queued,
     parentId: c.parentId,
+    archived: c.archived,
+    archivedAt: c.archivedAt,
     // Fall back to createdAt so every card has a stable, sortable order.
     order: c.order ?? c.createdAt,
     branch: c.branch ?? run?.branch,

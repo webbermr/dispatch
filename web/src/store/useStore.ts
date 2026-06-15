@@ -9,11 +9,20 @@ import type {
   App,
   Card,
   CardStatus,
+  CardType,
+  ChatMessage,
   CloneModalState,
+  CodingAgentId,
   DetailTab,
   DiffFile,
   View,
 } from './types'
+
+export interface BoardFilter {
+  text: string
+  type: CardType | 'all'
+  agent: CodingAgentId | 'all'
+}
 
 interface DispatchState {
   // ---- navigation / view ----
@@ -52,9 +61,17 @@ interface DispatchState {
   } | null
   /** Build-queue snapshot surfaced in the board header. */
   queue: { concurrency: number; active: number; queued: number }
+  /** App id whose AGENTS.md is being generated right now (for progress UI). */
+  agentsMdBusy: string | null
+  /** Card ids currently being split into sub-cards (for progress UI). */
+  decomposing: string[]
 
   // ---- ui ----
   cloneModal: CloneModalState | null
+  /** Generic in-app confirmation dialog (replaces window.confirm). */
+  confirm: { title: string; message: string; confirmLabel?: string; cancelLabel?: string; danger?: boolean; onConfirm: () => void } | null
+  askConfirm: (c: { title: string; message: string; confirmLabel?: string; cancelLabel?: string; danger?: boolean; onConfirm: () => void }) => void
+  closeConfirm: () => void
   logOpen: Record<string, boolean>
   chatDrafts: Record<string, string>
   toast: string | null
@@ -103,6 +120,31 @@ interface DispatchState {
   buildAllReady: () => void
   cancelQueued: (id: string) => void
 
+  // ---- archive / search / notifications / metrics ----
+  archiveCard: (id: string) => void
+  unarchiveCard: (id: string) => void
+  clearShipped: () => void
+  archiveOpen: boolean
+  setArchiveOpen: (open: boolean) => void
+  filter: BoardFilter
+  setFilter: (patch: Partial<BoardFilter>) => void
+  notify: boolean
+  toggleNotify: () => void
+  statsOpen: boolean
+  setStatsOpen: (open: boolean) => void
+
+  // ---- repo Q&A chat ----
+  repoChatOpen: boolean
+  repoChats: Record<string, { messages: ChatMessage[]; thinking: boolean; note?: string }>
+  repoChatDraft: string
+  openRepoChat: () => void
+  closeRepoChat: () => void
+  setRepoChatDraft: (v: string) => void
+  askRepo: () => void
+  clearRepoChat: () => void
+  /** Bridge: turn a chat answer into a card (optionally splitting it into sub-cards). */
+  createCardFromText: (title: string, prompt: string, decompose?: boolean) => void
+
   // ---- #1 race / #2 plan-first / #3 preview ----
   raceCard: (cardId: string) => void
   approvePlan: (cardId: string) => void
@@ -136,6 +178,28 @@ let toastTimer: ReturnType<typeof setTimeout> | undefined
 let chatTimer: ReturnType<typeof setTimeout> | undefined
 let agentTimer: ReturnType<typeof setTimeout> | undefined
 let ws: WebSocket | null = null
+
+const NOTIFY_KEY = 'dispatch.notify'
+
+/** Whether desktop notifications were enabled (persisted) and are still permitted. */
+function notifyInitial(): boolean {
+  try {
+    return localStorage.getItem(NOTIFY_KEY) === '1' && typeof Notification !== 'undefined' && Notification.permission === 'granted'
+  } catch {
+    return false
+  }
+}
+
+/** Fire a desktop notification (best-effort; silently no-ops if not permitted). */
+function notifyDesktop(title: string, body: string): void {
+  try {
+    if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+      new Notification(title, { body, icon: '/favicon.svg' })
+    }
+  } catch {
+    /* notifications unavailable */
+  }
+}
 
 /** A pairing code, displayed in the Connect modal and embedded in the npx command. */
 function makePairCode(): string {
@@ -198,7 +262,14 @@ export const useStore = create<DispatchState>((set, get) => {
       }
       case 'run.status': {
         const c = cardByRun(ev.runId)
-        if (c) updateCard(c.id, (cc) => ({ ...cc, status: runStatusToCard(ev.status) }))
+        if (c) {
+          updateCard(c.id, (cc) => ({ ...cc, status: runStatusToCard(ev.status) }))
+          // Desktop notification on terminal transitions (the user has likely walked away).
+          if (get().notify) {
+            if (ev.status === 'needs_review') notifyDesktop('Ready for review ✓', c.title)
+            else if (ev.status === 'failed') notifyDesktop('Build failed ✕', c.title)
+          }
+        }
         break
       }
       case 'run.progress': {
@@ -255,6 +326,22 @@ export const useStore = create<DispatchState>((set, get) => {
       }
       case 'notice': {
         toast(ev.message)
+        // A decompose notice (success or failure) carries its cardId → stop its spinner.
+        if (ev.cardId) set((s) => ({ decomposing: s.decomposing.filter((id) => id !== ev.cardId) }))
+        break
+      }
+      case 'chat.message': {
+        set((s) => {
+          const cur = s.repoChats[ev.appId] ?? { messages: [], thinking: false }
+          return { repoChats: { ...s.repoChats, [ev.appId]: { ...cur, messages: [...cur.messages, { role: ev.message.role, text: ev.message.text }] } } }
+        })
+        break
+      }
+      case 'chat.status': {
+        set((s) => {
+          const cur = s.repoChats[ev.appId] ?? { messages: [], thinking: false }
+          return { repoChats: { ...s.repoChats, [ev.appId]: { ...cur, thinking: ev.thinking, note: ev.thinking ? ev.note ?? cur.note : undefined } } }
+        })
         break
       }
     }
@@ -447,8 +534,20 @@ export const useStore = create<DispatchState>((set, get) => {
     pairCode: makePairCode(),
     health: null,
     queue: { concurrency: 3, active: 0, queued: 0 },
+    agentsMdBusy: null,
+    decomposing: [],
+    archiveOpen: false,
+    filter: { text: '', type: 'all', agent: 'all' },
+    notify: notifyInitial(),
+    statsOpen: false,
+    repoChatOpen: false,
+    repoChats: {},
+    repoChatDraft: '',
 
     cloneModal: null,
+    confirm: null,
+    askConfirm: (c) => set({ confirm: c }),
+    closeConfirm: () => set({ confirm: null }),
     logOpen: {},
     chatDrafts: {},
     toast: null,
@@ -760,21 +859,36 @@ export const useStore = create<DispatchState>((set, get) => {
         set({ cloneModal: { appId: id, cardId: null, appName: a.name, repo: a.repo } })
         return
       }
-      const done = (r: { overwritten: boolean; bytes: number }) => toast(`AGENTS.md ${r.overwritten ? 'updated' : 'created'} · ${r.bytes} bytes`)
-      toast('Scanning repo to write AGENTS.md…')
-      agent
-        .generateAgentsMd(id)
-        .then(done)
-        .catch((err) => {
-          if (err instanceof AgentError && err.status === 409) {
-            if (window.confirm('AGENTS.md already exists in this repo. Overwrite it?')) {
-              toast('Regenerating AGENTS.md…')
-              agent.generateAgentsMd(id, true).then(done).catch((e) => toast(`Failed: ${(e as Error).message}`))
+      const stop = (msg: string) => {
+        set({ agentsMdBusy: null })
+        toast(msg)
+      }
+      const run = (force: boolean): Promise<void> =>
+        agent
+          .generateAgentsMd(id, force)
+          .then((r) => stop(`AGENTS.md ${r.overwritten ? 'updated' : 'created'} · ${r.bytes} bytes`))
+          .catch((err) => {
+            if (err instanceof AgentError && err.status === 409) {
+              // Pause the spinner and ask in-app, then resume if they confirm.
+              set({ agentsMdBusy: null })
+              get().askConfirm({
+                title: 'AGENTS.md already exists',
+                message: 'This repo already has an AGENTS.md. Overwrite it with a freshly generated one?',
+                confirmLabel: 'Overwrite',
+                danger: true,
+                onConfirm: () => {
+                  set({ agentsMdBusy: id })
+                  toast('Regenerating AGENTS.md…')
+                  void run(true)
+                },
+              })
+            } else {
+              stop(`AGENTS.md failed: ${(err as Error).message}`)
             }
-          } else {
-            toast(`Failed: ${(err as Error).message}`)
-          }
-        })
+          })
+      set({ agentsMdBusy: id })
+      toast('Scanning repo to write AGENTS.md…')
+      void run(false)
     },
 
     // ---- queue / model / decompose ----
@@ -794,8 +908,16 @@ export const useStore = create<DispatchState>((set, get) => {
         set({ cloneModal: { appId: a.id, cardId: null, appName: a.name, repo: a.repo } })
         return
       }
+      const stop = () => set((s) => ({ decomposing: s.decomposing.filter((x) => x !== id) }))
+      set((s) => ({ decomposing: s.decomposing.includes(id) ? s.decomposing : [...s.decomposing, id] }))
       toast('Splitting this idea into cards…')
-      agent.decompose(id).catch((err) => toast(`Decompose failed: ${(err as Error).message}`))
+      // Safety net in case the completion notice never arrives.
+      const guard = setTimeout(stop, 120000)
+      agent.decompose(id).catch((err) => {
+        clearTimeout(guard)
+        stop()
+        toast(`Decompose failed: ${(err as Error).message}`)
+      })
     },
     buildAllReady: () => {
       const appId = get().appId
@@ -820,6 +942,133 @@ export const useStore = create<DispatchState>((set, get) => {
       updateCard(id, (c) => ({ ...c, queued: false }))
       if (get().live) agent.dequeue(id).catch((err) => toast(`Couldn't cancel: ${(err as Error).message}`))
       toast('Removed from queue')
+    },
+
+    // ---- archive / search / notifications / metrics ----
+    archiveCard: (id) => {
+      updateCard(id, (c) => ({ ...c, archived: true }))
+      set((s) => ({ openCardId: s.openCardId === id ? null : s.openCardId }))
+      if (get().live) agent.archiveCard(id).catch((err) => toast(`Archive failed: ${(err as Error).message}`))
+      toast('Card archived')
+    },
+    unarchiveCard: (id) => {
+      updateCard(id, (c) => ({ ...c, archived: false }))
+      if (get().live) agent.unarchiveCard(id).catch((err) => toast(`Couldn't restore: ${(err as Error).message}`))
+      toast('Card restored')
+    },
+    clearShipped: () => {
+      const appId = get().appId
+      if (!appId) return
+      const shipped = get().cards.filter((c) => c.appId === appId && c.status === 'merged' && !c.archived)
+      if (!shipped.length) {
+        toast('No shipped cards to clear')
+        return
+      }
+      get().askConfirm({
+        title: 'Clear shipped cards',
+        message: `Archive all ${shipped.length} shipped card${shipped.length > 1 ? 's' : ''}? You can still find them in the archive.`,
+        confirmLabel: 'Clear shipped',
+        onConfirm: () => {
+          set((s) => ({ cards: s.cards.map((c) => (c.appId === appId && c.status === 'merged' ? { ...c, archived: true } : c)) }))
+          if (get().live) agent.archiveMerged(appId).then((r) => toast(`Archived ${r.archived} cards`)).catch((err) => toast(`Failed: ${(err as Error).message}`))
+          else toast(`Archived ${shipped.length} cards`)
+        },
+      })
+    },
+    setArchiveOpen: (open) => set({ archiveOpen: open }),
+    setFilter: (patch) => set((s) => ({ filter: { ...s.filter, ...patch } })),
+    toggleNotify: () => {
+      const on = get().notify
+      if (on) {
+        try {
+          localStorage.setItem(NOTIFY_KEY, '0')
+        } catch {
+          /* ignore */
+        }
+        set({ notify: false })
+        toast('Notifications off')
+        return
+      }
+      // Turning on → request permission.
+      if (typeof Notification === 'undefined') {
+        toast('This browser does not support notifications')
+        return
+      }
+      const enable = () => {
+        try {
+          localStorage.setItem(NOTIFY_KEY, '1')
+        } catch {
+          /* ignore */
+        }
+        set({ notify: true })
+        toast('Notifications on — you’ll be pinged when builds finish')
+        notifyDesktop('Dispatch notifications on', 'You’ll get a ping when a build is ready or fails.')
+      }
+      if (Notification.permission === 'granted') enable()
+      else Notification.requestPermission().then((p) => (p === 'granted' ? enable() : toast('Notification permission denied')))
+    },
+    setStatsOpen: (open) => set({ statsOpen: open }),
+
+    // ---- repo Q&A chat ----
+    openRepoChat: () => {
+      const appId = get().appId
+      set({ repoChatOpen: true })
+      if (get().live && appId) {
+        agent
+          .getChat(appId)
+          .then((r) => set((s) => ({ repoChats: { ...s.repoChats, [appId]: { messages: r.messages.map((m) => ({ role: m.role, text: m.text })), thinking: r.thinking } } })))
+          .catch(() => {})
+      }
+    },
+    closeRepoChat: () => set({ repoChatOpen: false }),
+    setRepoChatDraft: (v) => set({ repoChatDraft: v }),
+    askRepo: () => {
+      const appId = get().appId
+      const text = get().repoChatDraft.trim()
+      if (!appId || !text) return
+      if (!get().live) {
+        toast('Connect your machine to ask about the repo')
+        return
+      }
+      const a = app(appId)
+      if (a && !a.cloned) {
+        set({ cloneModal: { appId, cardId: null, appName: a.name, repo: a.repo } })
+        return
+      }
+      // The user message + answer arrive over WS (chat.message), so no optimistic add.
+      set({ repoChatDraft: '' })
+      agent.ask(appId, text).catch((err) => toast(`Ask failed: ${(err as Error).message}`))
+    },
+    clearRepoChat: () => {
+      const appId = get().appId
+      if (!appId) return
+      set((s) => ({ repoChats: { ...s.repoChats, [appId]: { messages: [], thinking: false } } }))
+      if (get().live) agent.clearChat(appId).catch(() => {})
+    },
+    createCardFromText: (title, prompt, decompose) => {
+      const appId = get().appId
+      if (!appId) return
+      const t = title.trim().slice(0, 80) || 'From chat'
+      if (get().live) {
+        agent
+          .createCard({ appId, title: t, desc: 'Created from a repo chat answer.', prompt })
+          .then((c) => {
+            set((s) => ({
+              cards: s.cards.some((x) => x.id === c.id) ? s.cards : [mapCard(c), ...s.cards],
+              repoChatOpen: false,
+              openCardId: decompose ? s.openCardId : c.id,
+              focusTitleCardId: decompose ? s.focusTitleCardId : c.id,
+            }))
+            if (decompose) get().decomposeCard(c.id)
+            else toast('Card created from answer')
+          })
+          .catch((err) => toast(`Couldn't create card: ${(err as Error).message}`))
+        return
+      }
+      const id = 'n' + Date.now()
+      const newC: Card = { id, appId, type: 'feature', priority: 'med', status: 'ideas', title: t, desc: 'Created from a repo chat answer.', prompt, order: Date.now() }
+      set((s) => ({ cards: [newC, ...s.cards], repoChatOpen: false, openCardId: id, focusTitleCardId: id }))
+      toast('Card created from answer')
     },
 
     // ---- race / plan / preview ----

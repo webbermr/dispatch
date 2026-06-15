@@ -42,6 +42,12 @@ export function runsRouter(): Router {
     res.json(runManager.queueInfo())
   })
 
+  // GET /metrics?appId= — success rate + avg build time per agent/model.
+  r.get('/metrics', (req, res) => {
+    const appId = typeof req.query.appId === 'string' ? req.query.appId : undefined
+    res.json(runManager.metrics(appId))
+  })
+
   // POST /runs/race — build the card with every installed agent in parallel.
   r.post('/runs/race', async (req, res) => {
     const { appId, cardId, prompt, type, baseBranch, title, agents } = req.body ?? {}

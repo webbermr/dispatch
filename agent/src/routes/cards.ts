@@ -72,6 +72,29 @@ export function cardsRouter(): Router {
     }
   })
 
+  // GET /cards/:id/runs — every run for a card (retries + race contenders).
+  r.get('/cards/:id/runs', (req, res) => {
+    res.json({ runs: runManager.runsForCard(req.params.id) })
+  })
+
+  // POST /cards/:id/archive — hide a merged card from the board.
+  r.post('/cards/:id/archive', (req, res) => {
+    try {
+      res.json(runManager.setArchived(req.params.id, true))
+    } catch (err) {
+      res.status(400).json({ error: (err as Error).message })
+    }
+  })
+
+  // POST /cards/:id/unarchive — restore an archived card to the board.
+  r.post('/cards/:id/unarchive', (req, res) => {
+    try {
+      res.json(runManager.setArchived(req.params.id, false))
+    } catch (err) {
+      res.status(400).json({ error: (err as Error).message })
+    }
+  })
+
   // POST /cards/:id/dequeue — pull a queued card back out of the build queue.
   r.post('/cards/:id/dequeue', (req, res) => {
     try {

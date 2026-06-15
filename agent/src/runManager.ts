@@ -9,7 +9,9 @@ import { addWorktree, branchExists, captureDiff, commitAll, getRemoteUrl, hasSta
 import { createPullRequest, forgeOfUrl, forgeReady } from './lib/forge.js'
 import { ghChecks } from './lib/gh.js'
 import { log } from './lib/log.js'
-import type { AppRecord, CardRecord, CardStatus, CardType, ChatMessage, ChecksResult, CodingAgentId, Priority, RunRecord, RunStatus, StepId, StepState } from './types.js'
+import type { AppRecord, CardRecord, CardStatus, CardType, ChatMessage, ChecksResult, CodingAgentId, MetricsResult, Priority, RunRecord, RunStatus, StepId, StepState } from './types.js'
+
+const AUTO_ARCHIVE_AFTER_MS = 7 * 24 * 60 * 60 * 1000 // merged cards older than this auto-archive
 
 const STEP_ORDER: StepId[] = ['cloning', 'planning', 'editing', 'testing', 'pr']
 
@@ -105,9 +107,24 @@ export class RunManager {
     for (const r of state.runs) this.runs.set(r.id, r)
     for (const c of state.cards) this.cards.set(c.id, c)
     this.reconcile()
+    this.autoArchiveOld()
     // Rebuild the build queue from persisted `queued` cards and start what fits.
     for (const c of this.cards.values()) if (c.queued && c.status === 'ready') this.queue.push(c.id)
     if (this.queue.length) queueMicrotask(() => void this.pump())
+  }
+
+  /** Auto-archive merged cards that have been done for a while (keeps the board tidy). */
+  private autoArchiveOld(): void {
+    const now = Date.now()
+    let changed = false
+    for (const c of this.cards.values()) {
+      if (c.status === 'merged' && !c.archived && now - c.updatedAt > AUTO_ARCHIVE_AFTER_MS) {
+        c.archived = true
+        c.archivedAt = now
+        changed = true
+      }
+    }
+    if (changed) this.persist()
   }
 
   /** On startup, mark runs that were building (agent crashed mid-run) as interrupted. */
@@ -221,6 +238,87 @@ export class RunManager {
     this.persist()
     bus.publish({ type: 'card.remove', cardId: id })
     if (card.queued) this.emitQueue()
+  }
+
+  /** Archive/unarchive a card (hidden from the board, kept for history/search). */
+  setArchived(id: string, archived: boolean): CardRecord {
+    const card = this.cards.get(id)
+    if (!card) throw new Error('unknown card')
+    if (archived && card.status !== 'merged') throw new Error('only merged cards can be archived')
+    card.archived = archived
+    card.archivedAt = archived ? Date.now() : undefined
+    card.updatedAt = Date.now()
+    this.persist()
+    bus.publish({ type: 'card.update', card })
+    return card
+  }
+
+  /** Archive every (non-archived) merged card in an app — the "Clear shipped" action. */
+  archiveMerged(appId: string): { archived: number } {
+    let n = 0
+    const now = Date.now()
+    for (const c of this.cards.values()) {
+      if (c.appId === appId && c.status === 'merged' && !c.archived) {
+        c.archived = true
+        c.archivedAt = now
+        c.updatedAt = now
+        bus.publish({ type: 'card.update', card: c })
+        n++
+      }
+    }
+    if (n) this.persist()
+    return { archived: n }
+  }
+
+  /** All runs for a card (every attempt: retries + race contenders), newest first. */
+  runsForCard(cardId: string): RunRecord[] {
+    return [...this.runs.values()].filter((r) => r.cardId === cardId).sort((a, b) => b.createdAt - a.createdAt)
+  }
+
+  /** Aggregate build stats (success rate + avg duration) per agent/model. */
+  metrics(appId?: string): MetricsResult {
+    const runs = [...this.runs.values()].filter((r) => !appId || r.appId === appId)
+    const isSuccess = (s: RunStatus) => s === 'needs_review' || s === 'merged'
+    const isFailed = (s: RunStatus) => s === 'failed' || s === 'interrupted'
+    const isTerminal = (s: RunStatus) => isSuccess(s) || isFailed(s)
+
+    const groups = new Map<string, { agentId: CodingAgentId; model: string; total: number; success: number; failed: number; durations: number[] }>()
+    let tTotal = 0
+    let tSuccess = 0
+    let tFailed = 0
+    const tDurations: number[] = []
+
+    for (const r of runs) {
+      if (!isTerminal(r.status)) continue
+      const agentId = (r.agentId ?? 'codex') as CodingAgentId
+      const model = r.model || 'default'
+      const key = `${agentId}/${model}`
+      let g = groups.get(key)
+      if (!g) {
+        g = { agentId, model, total: 0, success: 0, failed: 0, durations: [] }
+        groups.set(key, g)
+      }
+      g.total++
+      tTotal++
+      if (isSuccess(r.status)) {
+        g.success++
+        tSuccess++
+      } else {
+        g.failed++
+        tFailed++
+      }
+      const dur = r.updatedAt - r.createdAt
+      if (dur > 0) {
+        g.durations.push(dur)
+        tDurations.push(dur)
+      }
+    }
+
+    const avg = (xs: number[]) => (xs.length ? Math.round(xs.reduce((a, b) => a + b, 0) / xs.length) : null)
+    const byAgent = [...groups.values()]
+      .map((g) => ({ agentId: g.agentId, model: g.model, total: g.total, success: g.success, failed: g.failed, avgMs: avg(g.durations) }))
+      .sort((a, b) => b.total - a.total)
+    return { totals: { total: tTotal, success: tSuccess, failed: tFailed, avgMs: avg(tDurations) }, byAgent }
   }
 
   /** Remove all cards + runs for an app (used when a repo is removed). Cleans up
@@ -808,15 +906,19 @@ export class RunManager {
     const prompt =
       `You are breaking a large product idea into smaller, independently-shippable cards for a kanban board.\n\n` +
       `IDEA:\n${idea}\n\n` +
-      `Respond with ONLY a JSON array (no markdown fences, no prose) of 2 to 5 objects, each shaped ` +
-      `{"title": short string, "prompt": a clear build instruction for a coding agent, "type": "feature" | "bug" | "enhancement"}. ` +
-      `Order them by a sensible build sequence.`
+      `Respond with ONLY a JSON array (no markdown fences, no prose) of 2 to 5 objects. Each object has:\n` +
+      `- "title": a short imperative title for the card\n` +
+      `- "type": "feature" | "bug" | "enhancement"\n` +
+      `- "prompt": a user story followed by BDD acceptance criteria, written EXACTLY in this shape:\n` +
+      `    "As a <role>, I want <capability>, so that <benefit>.\\n\\nAcceptance Criteria:\\n\\nScenario: <short name>\\nGiven <precondition>\\nWhen <action>\\nThen <expected outcome>"\n` +
+      `  Include 1 to 3 Given/When/Then scenarios per card (separate scenarios with a blank line). Use real, repo-specific detail where possible.\n\n` +
+      `Order the cards by a sensible build sequence.`
 
     this.runOneshot(app.localPath, agentId, prompt)
       .then(({ text }) => {
         const specs = parseDecompose(text)
         if (!specs.length) {
-          bus.publish({ type: 'notice', level: 'error', message: `Couldn't split "${card.title}" — the agent didn't return a usable breakdown.`, appId: card.appId })
+          bus.publish({ type: 'notice', level: 'error', message: `Couldn't split "${card.title}" — the agent didn't return a usable breakdown.`, appId: card.appId, cardId: card.id })
           return
         }
         for (const spec of specs) {
@@ -828,7 +930,7 @@ export class RunManager {
             priority: card.priority,
             status: 'ideas',
             title: spec.title,
-            desc: `Split from “${card.title}”.`,
+            desc: `${spec.title}\nNote: Split from "${card.title}"`,
             prompt: spec.prompt,
             parentId: card.id,
             createdAt: now,
@@ -838,10 +940,10 @@ export class RunManager {
           bus.publish({ type: 'card.update', card: sub })
         }
         this.persist()
-        bus.publish({ type: 'notice', level: 'info', message: `Split "${card.title}" into ${specs.length} cards.`, appId: card.appId })
+        bus.publish({ type: 'notice', level: 'info', message: `Split "${card.title}" into ${specs.length} cards.`, appId: card.appId, cardId: card.id })
       })
       .catch((err) => {
-        bus.publish({ type: 'notice', level: 'error', message: `Decompose failed: ${(err as Error).message}`, appId: card.appId })
+        bus.publish({ type: 'notice', level: 'error', message: `Decompose failed: ${(err as Error).message}`, appId: card.appId, cardId: card.id })
       })
   }
 

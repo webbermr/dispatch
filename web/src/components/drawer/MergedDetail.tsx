@@ -4,6 +4,7 @@ import { agentLabel } from '../../lib/constants'
 import { diffStats } from '../../lib/helpers'
 import { useStore } from '../../store/useStore'
 import type { Card } from '../../store/types'
+import { RunHistory } from './RunHistory'
 
 const CI_STYLE: Record<string, { dot: string; label: string }> = {
   success: { dot: 'var(--status-success)', label: 'All checks passed' },
@@ -155,6 +156,8 @@ export function MergedDetail({ card }: { card: Card }) {
           <CiStatus runId={card.runId} />
         </div>
       )}
+
+      {live && <RunHistory cardId={card.id} />}
 
       {live && card.branch && (
         <div style={{ marginTop: 10, paddingTop: 16, borderTop: '1px solid var(--border-subtle)', width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>

@@ -156,6 +156,9 @@ export interface CardRecord {
   prUrl?: string
   /** Race mode: the competing run ids (one per agent) while a card is raced. */
   raceRunIds?: string[]
+  /** Archived: a shipped card hidden from the board (kept for history/search). */
+  archived?: boolean
+  archivedAt?: number
   createdAt: number
   updatedAt: number
 }
@@ -164,6 +167,13 @@ export interface CardRecord {
 export interface PersistedState {
   runs: RunRecord[]
   cards: CardRecord[]
+}
+
+/** A per-repo Q&A chat session (read-only; grounded in the repo files). */
+export interface RepoChatRecord {
+  appId: string
+  sessionId?: string
+  messages: ChatMessage[]
 }
 
 // ---- Persisted config (~/.dispatch/config.json) ----
@@ -193,7 +203,10 @@ export type ServerEvent =
   /** Build queue / concurrency snapshot (surfaces the cap + queued count). */
   | { type: 'queue.update'; concurrency: number; active: number; queued: number }
   /** A one-off notice for async ops (decompose, auto-retry) → a client toast. */
-  | { type: 'notice'; level: 'info' | 'error'; message: string; appId?: string }
+  | { type: 'notice'; level: 'info' | 'error'; message: string; appId?: string; cardId?: string }
+  /** Repo Q&A chat: a settled message, and a thinking/activity indicator. */
+  | { type: 'chat.message'; appId: string; message: ChatMessage }
+  | { type: 'chat.status'; appId: string; thinking: boolean; note?: string }
 
 export interface CheckRunInfo {
   name: string
@@ -209,6 +222,21 @@ export interface ChecksResult {
   prUrl: string | null
   state: 'success' | 'failure' | 'pending' | 'none' | 'unsupported'
   checks: CheckRunInfo[]
+}
+
+/** Aggregate build stats, optionally scoped to one app. */
+export interface AgentMetricRow {
+  agentId: CodingAgentId
+  model: string
+  total: number
+  success: number
+  failed: number
+  avgMs: number | null
+}
+
+export interface MetricsResult {
+  totals: { total: number; success: number; failed: number; avgMs: number | null }
+  byAgent: AgentMetricRow[]
 }
 
 export interface HealthResponse {

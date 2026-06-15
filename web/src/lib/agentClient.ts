@@ -71,6 +71,8 @@ export interface AgentCard {
   order?: number
   queued?: boolean
   parentId?: string
+  archived?: boolean
+  archivedAt?: number
   raceRunIds?: string[]
   runId?: string
   branch?: string
@@ -110,6 +112,8 @@ export interface AgentRun {
   phase?: 'plan_review' | 'build'
   plan?: string
   error?: string
+  createdAt?: number
+  updatedAt?: number
 }
 
 export interface RepoDiagnosis {
@@ -141,6 +145,20 @@ export interface ChecksResult {
   checks: CheckRunInfo[]
 }
 
+export interface AgentMetricRow {
+  agentId: CodingAgentId
+  model: string
+  total: number
+  success: number
+  failed: number
+  avgMs: number | null
+}
+
+export interface MetricsResult {
+  totals: { total: number; success: number; failed: number; avgMs: number | null }
+  byAgent: AgentMetricRow[]
+}
+
 export type ServerEvent =
   | { type: 'run.step'; runId: string; step: string; state: 'pending' | 'active' | 'done' }
   | { type: 'run.log'; runId: string; line: string; stream: 'stdout' | 'stderr' }
@@ -154,7 +172,9 @@ export type ServerEvent =
   | { type: 'app.remove'; appId: string }
   | { type: 'agent.status'; online: boolean }
   | { type: 'queue.update'; concurrency: number; active: number; queued: number }
-  | { type: 'notice'; level: 'info' | 'error'; message: string; appId?: string }
+  | { type: 'notice'; level: 'info' | 'error'; message: string; appId?: string; cardId?: string }
+  | { type: 'chat.message'; appId: string; message: { role: 'agent' | 'user'; text: string; ts: number } }
+  | { type: 'chat.status'; appId: string; thinking: boolean; note?: string }
 
 export class AgentError extends Error {
   constructor(public status: number, message: string) {
@@ -230,6 +250,15 @@ export class AgentClient {
   generateAgentsMd(id: string, force = false): Promise<{ path: string; bytes: number; overwritten: boolean }> {
     return this.req(`/apps/${id}/agents-md`, { method: 'POST', body: JSON.stringify({ force }) })
   }
+  getChat(id: string): Promise<{ messages: { role: 'agent' | 'user'; text: string; ts: number }[]; thinking: boolean }> {
+    return this.req(`/apps/${id}/chat`)
+  }
+  ask(id: string, text: string): Promise<{ ok: boolean }> {
+    return this.req(`/apps/${id}/ask`, { method: 'POST', body: JSON.stringify({ text }) })
+  }
+  clearChat(id: string): Promise<{ ok: boolean }> {
+    return this.req(`/apps/${id}/chat/clear`, { method: 'POST' })
+  }
   diagnose(localPath: string): Promise<RepoDiagnosis> {
     return this.req('/apps/diagnose', { method: 'POST', body: JSON.stringify({ localPath }) })
   }
@@ -258,6 +287,21 @@ export class AgentClient {
   }
   deleteCard(id: string): Promise<void> {
     return this.req(`/cards/${id}`, { method: 'DELETE' })
+  }
+  cardRuns(id: string): Promise<{ runs: AgentRun[] }> {
+    return this.req(`/cards/${id}/runs`)
+  }
+  archiveCard(id: string): Promise<AgentCard> {
+    return this.req(`/cards/${id}/archive`, { method: 'POST' })
+  }
+  unarchiveCard(id: string): Promise<AgentCard> {
+    return this.req(`/cards/${id}/unarchive`, { method: 'POST' })
+  }
+  archiveMerged(appId: string): Promise<{ archived: number }> {
+    return this.req(`/apps/${appId}/archive-merged`, { method: 'POST' })
+  }
+  metrics(appId?: string): Promise<MetricsResult> {
+    return this.req(`/metrics${appId ? `?appId=${encodeURIComponent(appId)}` : ''}`)
   }
 
   // ---- runs ----

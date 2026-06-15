@@ -50,6 +50,7 @@ export function PlanDetail({ card }: { card: Card }) {
   const deleteCard = useStore((s) => s.deleteCard)
   const setCardModel = useStore((s) => s.setCardModel)
   const decomposeCard = useStore((s) => s.decomposeCard)
+  const decomposing = useStore((s) => s.decomposing.includes(card.id))
   const cancelQueued = useStore((s) => s.cancelQueued)
   const health = useStore((s) => s.health)
   const queue = useStore((s) => s.queue)
@@ -229,8 +230,15 @@ export function PlanDetail({ card }: { card: Card }) {
               Save
             </Button>
             {live && (
-              <Button variant="secondary" onClick={() => decomposeCard(card.id)} style={{ color: 'var(--color-purple-dark)' }}>
-                ✂ Split into cards
+              <Button variant="secondary" onClick={() => decomposeCard(card.id)} disabled={decomposing} style={{ color: 'var(--color-purple-dark)' }}>
+                {decomposing ? (
+                  <>
+                    <span style={{ display: 'inline-block', width: 12, height: 12, borderRadius: '50%', border: '2px solid var(--neutral-200)', borderTopColor: 'var(--color-purple-dark)', animation: 'dpspin .7s linear infinite' }} />
+                    Splitting…
+                  </>
+                ) : (
+                  '✂ Split into cards'
+                )}
               </Button>
             )}
           </>

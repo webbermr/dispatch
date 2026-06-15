@@ -11,3 +11,6 @@ dist/
 
 # Local scratch repo used for testing (its own git repo)
 dispatch-sandbox/
+
+# TypeScript incremental build cache
+*.tsbuildinfo

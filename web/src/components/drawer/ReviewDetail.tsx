@@ -5,6 +5,7 @@ import { diffStats } from '../../lib/helpers'
 import { useStore } from '../../store/useStore'
 import type { Card, DiffFile, DetailTab, CodingAgentId } from '../../store/types'
 import { Button } from '../Button'
+import { RunHistory } from './RunHistory'
 
 function DiffView({ diff }: { diff: DiffFile[] }) {
   return (
@@ -280,6 +281,11 @@ export function ReviewDetail({ card }: { card: Card }) {
       <div style={{ flex: 1, overflowY: tab === 'diff' ? 'auto' : 'hidden', minHeight: 0 }}>
         {tab === 'diff' ? <DiffView diff={card.diff || []} /> : <ChatView card={card} />}
       </div>
+      {live && (
+        <div style={{ padding: '0 22px' }}>
+          <RunHistory cardId={card.id} />
+        </div>
+      )}
       <div style={{ padding: '14px 22px', borderTop: '1px solid var(--border-subtle)', background: 'var(--neutral-50)', display: 'flex', gap: 10 }}>
         <Button variant="primary" onClick={() => approveMerge(card.id)}>
           Approve &amp; merge

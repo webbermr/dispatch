@@ -86,6 +86,9 @@ export interface Card {
   queued?: boolean
   /** If split off a larger idea, the parent card's id. */
   parentId?: string
+  /** Archived: a shipped card hidden from the board (still searchable). */
+  archived?: boolean
+  archivedAt?: number
   /** Manual sort order within a column (higher = nearer the top). */
   order?: number
   /** Linked agent run id (live mode only). */

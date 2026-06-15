@@ -10,6 +10,7 @@ import { bus } from '../lib/events.js'
 import { isPathContained } from '../lib/paths.js'
 import { log } from '../lib/log.js'
 import { registerRepo } from '../lib/registry.js'
+import { repoChat } from '../repoChat.js'
 import { runManager } from '../runManager.js'
 import type { AppRecord, AppStatus } from '../types.js'
 
@@ -165,6 +166,35 @@ export function appsRouter(): Router {
     if (typeof name === 'string' && name.trim()) app.name = name.trim()
     saveConfig(cfg)
     res.json(await statusFor(app))
+  })
+
+  // POST /apps/:id/archive-merged — archive all shipped cards in an app.
+  r.post('/apps/:id/archive-merged', (req, res) => {
+    if (!loadConfig().apps.some((a) => a.id === req.params.id)) return res.status(404).json({ error: 'unknown app' })
+    res.json(runManager.archiveMerged(req.params.id))
+  })
+
+  // GET /apps/:id/chat — the repo Q&A transcript (for initial load).
+  r.get('/apps/:id/chat', (req, res) => {
+    res.json(repoChat.transcript(req.params.id))
+  })
+
+  // POST /apps/:id/ask — ask a question about the repo (answer streams over WS).
+  r.post('/apps/:id/ask', (req, res) => {
+    const text = (req.body?.text ?? '').toString().trim()
+    if (!text) return res.status(400).json({ error: 'text is required' })
+    try {
+      repoChat.ask(req.params.id, text)
+      res.status(202).json({ ok: true })
+    } catch (err) {
+      res.status(400).json({ error: (err as Error).message })
+    }
+  })
+
+  // POST /apps/:id/chat/clear — reset the repo chat transcript + session.
+  r.post('/apps/:id/chat/clear', (req, res) => {
+    repoChat.clear(req.params.id)
+    res.json({ ok: true })
   })
 
   // POST /apps/:id/agents-md — scan the repo and (over)write AGENTS.md.
