@@ -1,0 +1,35 @@
+name: Release
+
+# Push a tag like v0.2.0 to build self-contained tarballs and attach them to a
+# GitHub Release. No registry/npm token needed — uses the built-in GITHUB_TOKEN.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # Build the web UI (Rollup runs in WASM, so this works on any runner).
+      - name: Build web
+        run: cd web && npm ci && npm run build
+
+      # `npm pack` runs each package's prepack: agent builds + bundles web/dist into
+      # the tarball; server builds. Both come out self-contained (no install-time build).
+      - name: Pack agent
+        run: cd agent && npm ci && npm pack && mv *.tgz "$GITHUB_WORKSPACE/"
+      - name: Pack server
+        run: cd server && npm ci && npm pack && mv *.tgz "$GITHUB_WORKSPACE/"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" *.tgz --title "$GITHUB_REF_NAME" --generate-notes

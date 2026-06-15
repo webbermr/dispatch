@@ -45,6 +45,10 @@ cd dispatch
 
 (Or copy the project folder onto the laptop.)
 
+> **Just want to run it, not develop it?** If a release tarball exists, you can skip cloning
+> and building entirely — `npm install -g ./dispatch-agent-<version>.tgz` (the web UI is
+> bundled in). See **RELEASE.md** for cutting and installing releases.
+
 ## 3. Build both halves
 
 ```bash

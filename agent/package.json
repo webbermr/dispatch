@@ -18,8 +18,10 @@
     "start": "tsx src/cli.ts",
     "build": "tsc -p tsconfig.json",
     "bundle": "node scripts/bundle-web.mjs",
+    "prepack": "npm run build && npm run bundle",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
+  "repository": "github:webbermr/dispatch",
   "dependencies": {
     "cors": "^2.8.5",
     "express": "^4.21.1",
